@@ -27,6 +27,8 @@ A comprehensive tool for estimating GPU memory requirements for Large Language M
 | torch.compile Overhead | ✓ | ✓ |
 | CUDA Context | ✓ | ✓ |
 
+![poc](poc.png)
+
 ## Installation
 
 ```bash
