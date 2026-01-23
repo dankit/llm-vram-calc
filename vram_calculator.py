@@ -48,9 +48,9 @@ GPU_SPECS = {
 # ============================================================================
 
 DTYPE_BYTES = {
+    "bfloat16 (BF16)": 2,      # Recommended for training on modern GPUs
+    "float16 (FP16)": 2,       # For older GPUs (V100, T4) without native BF16
     "float32 (FP32)": 4,
-    "float16 (FP16)": 2,
-    "bfloat16 (BF16)": 2,
     "int8 (8-bit Quantized)": 1,
     "int4 (4-bit Quantized)": 0.5
 }
@@ -281,6 +281,7 @@ def calculate_vram(
     lora_enabled: bool,
     use_torch_compile: bool = False,
     ddp_enabled: bool = False,
+    mixed_precision: bool = False,
     # Manual config overrides (0 or None means use auto-detected value)
     manual_params_b: float = 0,
     manual_hidden: int = 0,
@@ -305,6 +306,7 @@ def calculate_vram(
     - KV cache (inference only)
     - DDP overhead (multi-GPU gradient synchronization)
     - torch.compile overhead (graph compilation memory)
+    - Mixed precision training (optional FP32 master weights)
     
     For MoE models, properly handles:
     - Total params (all experts loaded) vs active params (per forward pass)
@@ -324,6 +326,7 @@ def calculate_vram(
         lora_enabled: Whether LoRA is enabled
         use_torch_compile: Whether torch.compile is used
         ddp_enabled: Whether DistributedDataParallel is used
+        mixed_precision: Whether to use FP32 master weights (for FP16/BF16 training)
         manual_*: Manual config overrides (0 means use auto-detected)
     
     Returns:
@@ -440,7 +443,8 @@ def calculate_vram(
     head_dim = hidden // heads if heads > 0 else 128
     
     bytes_per_param = DTYPE_BYTES[dtype]
-    is_mixed_precision = dtype in ["float16 (FP16)", "bfloat16 (BF16)"]
+    
+    is_mixed_precision = mixed_precision and mode == "Training"
     
     # Detect SwiGLU (most modern LLMs use it)
     if manual_uses_swiglu == "Yes":
@@ -1040,6 +1044,7 @@ def calculate_and_display(
     lora_rank: int,
     use_torch_compile: bool,
     ddp_enabled: bool,
+    mixed_precision: bool,
     # Manual config parameters
     manual_params_b: float,
     manual_hidden: int,
@@ -1075,6 +1080,7 @@ def calculate_and_display(
         lora_enabled=lora_enabled,
         use_torch_compile=use_torch_compile,
         ddp_enabled=ddp_enabled,
+        mixed_precision=mixed_precision,
         manual_params_b=float(manual_params_b) if manual_params_b else 0,
         manual_hidden=int(manual_hidden) if manual_hidden else 0,
         manual_layers=int(manual_layers) if manual_layers else 0,
@@ -1178,6 +1184,7 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 | **GPU** | {gpu_name} |
 | **Mode** | {mode} |
 | **Precision** | {dtype} |
+| **Mixed Precision** | {'Yes (FP32 master weights)' if mixed_precision and mode == 'Training' else 'No'} |
 | **Batch x Seq** | {int(batch_size)} x {int(seq_length):,} |
 
 ---
@@ -1406,8 +1413,9 @@ def build_interface():
                     
                     dtype = gr.Dropdown(
                         choices=list(DTYPE_BYTES.keys()),
-                        value="float16 (FP16)",
+                        value="bfloat16 (BF16)",
                         label="Precision",
+                        info="BF16 recommended for training on modern GPUs (Ampere+). FP16 for older GPUs (V100, T4).",
                     )
                 
                 with gr.Group():
@@ -1431,6 +1439,11 @@ def build_interface():
                         choices=["AdamW (32-bit)", "AdamW (8-bit)", "SGD", "Adafactor"],
                         value="AdamW (32-bit)",
                         label="Optimizer",
+                    )
+                    mixed_precision = gr.Checkbox(
+                        value=False,
+                        label="Mixed Precision (FP32 master weights)",
+                        info="Keep FP32 copy of weights for stability. Recommended for FP16, optional for BF16.",
                     )
                     lora_enabled = gr.Checkbox(
                         value=True,
@@ -1477,7 +1490,7 @@ def build_interface():
             model_id, gpu_dropdown, mode, dtype,
             batch_size, seq_length, gradient_checkpointing,
             optimizer, lora_enabled, lora_rank,
-            use_torch_compile, ddp_enabled
+            use_torch_compile, ddp_enabled, mixed_precision
         ] + manual_config_inputs
         all_outputs = [visualization, summary] + manual_config_inputs
         
@@ -1486,7 +1499,7 @@ def build_interface():
             gpu_dropdown, mode, dtype,
             batch_size, seq_length, gradient_checkpointing,
             optimizer, lora_enabled, lora_rank,
-            use_torch_compile, ddp_enabled
+            use_torch_compile, ddp_enabled, mixed_precision
         ]
         
         # Calculate button
@@ -1517,7 +1530,7 @@ def build_interface():
         
         preset_inputs = [gpu_dropdown, mode, dtype, batch_size, seq_length, 
                         gradient_checkpointing, optimizer, lora_enabled, lora_rank,
-                        use_torch_compile, ddp_enabled,
+                        use_torch_compile, ddp_enabled, mixed_precision,
                         manual_params_b, manual_hidden, manual_layers, manual_heads,
                         manual_kv_heads, manual_intermediate, manual_vocab_size, manual_uses_swiglu,
                         manual_num_experts, manual_experts_per_token, manual_active_params_b]
@@ -1557,11 +1570,27 @@ def build_interface():
             outputs=lora_rank,
         )
         
+        # Auto-default mixed precision based on dtype
+        # FP16 needs mixed precision for numerical stability, BF16 usually doesn't
+        def update_mixed_precision_default(dtype_val):
+            if "float16" in dtype_val.lower() or "fp16" in dtype_val.lower():
+                return gr.update(value=True)
+            elif "bfloat16" in dtype_val.lower() or "bf16" in dtype_val.lower():
+                return gr.update(value=False)
+            return gr.update()
+        
+        dtype.change(
+            fn=update_mixed_precision_default,
+            inputs=dtype,
+            outputs=mixed_precision,
+        )
+        
         # Toggle training options visibility
         def update_training_visibility(mode_val, lora_enabled_val):
             is_training = mode_val == "Training"
             lora_rank_visible = is_training and lora_enabled_val
             return (
+                gr.update(visible=is_training),
                 gr.update(visible=is_training),
                 gr.update(visible=is_training),
                 gr.update(visible=is_training),
@@ -1572,7 +1601,7 @@ def build_interface():
         mode.change(
             fn=update_training_visibility,
             inputs=[mode, lora_enabled],
-            outputs=[gradient_checkpointing, optimizer, lora_enabled, lora_rank, ddp_enabled],
+            outputs=[gradient_checkpointing, optimizer, mixed_precision, lora_enabled, lora_rank, ddp_enabled],
         )
     
     return demo

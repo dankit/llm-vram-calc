@@ -14,6 +14,8 @@ A comprehensive tool for estimating GPU memory requirements for Large Language M
 - **Auto-Detection** - Fetches model configs from HuggingFace or uses built-in presets
 - **Interactive UI** - Beautiful Gradio web interface with real-time calculations
 
+Note: I haven't spent too much time testing the manual config setup or huggingface loading versatility.
+
 ## Memory Components Calculated
 
 | Component | Training | Inference |
