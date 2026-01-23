@@ -12,7 +12,7 @@ A comprehensive tool for estimating GPU memory requirements for Large Language M
 - **Mixed Precision** - Support for FP32, FP16, BF16, INT8, and INT4 quantization
 - **Training Optimizations** - Gradient checkpointing, 8-bit optimizers, DDP overhead estimation
 - **Auto-Detection** - Fetches model configs from HuggingFace or uses built-in presets
-- **Interactive UI** - Beautiful Gradio web interface with real-time calculations
+- **Interactive UI** - Gradio web interface with real-time calculations
 
 Note: I haven't spent too much time testing the manual config setup or huggingface loading versatility.
 
@@ -35,8 +35,8 @@ Note: I haven't spent too much time testing the manual config setup or huggingfa
 
 ```bash
 # Clone the repository
-git clone https://github.com/dankit/vram-calc.git
-cd vram-calc
+git clone https://github.com/dankit/llm-vram-calc.git
+cd llm-vram-calc
 
 # Install dependencies
 pip install -r requirements.txt
