@@ -120,24 +120,24 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
         other_pct = (estimate.other_activations_gb / total_act) * 100
         
         activation_breakdown_html = f"""
-        <div style="padding: 24px; background: #1e293b; border-radius: 16px; margin-bottom: 24px;">
-            <h3 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 600; color: #e2e8f0;">
+        <div style="padding: 14px; background: #1e293b; border-radius: 16px; margin-bottom: 14px;">
+            <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600; color: #e2e8f0;">
                 Activation Memory Breakdown
             </h3>
-            <div style="display: flex; height: 40px; border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
-                <div style="width: {attn_pct}%; background: linear-gradient(90deg, #ec4899, #f472b6); 
+            <div style="display: flex; height: 34px; border-radius: 8px; overflow: hidden; margin-bottom: 12px; border: 1px solid #334155;">
+                <div style="width: {attn_pct}%; background: #ec4899; border-right: 2px solid #0f172a;
                             display: flex; align-items: center; justify-content: center;">
                     <span style="font-size: 11px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
                         {attn_pct:.0f}%
                     </span>
                 </div>
-                <div style="width: {ffn_pct}%; background: linear-gradient(90deg, #f472b6, #fb7185); 
+                <div style="width: {ffn_pct}%; background: #f97316; border-right: 2px solid #0f172a;
                             display: flex; align-items: center; justify-content: center;">
                     <span style="font-size: 11px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
                         {ffn_pct:.0f}%
                     </span>
                 </div>
-                <div style="width: {other_pct}%; background: linear-gradient(90deg, #94a3b8, #64748b); 
+                <div style="width: {other_pct}%; background: #64748b;
                             display: flex; align-items: center; justify-content: center;">
                     <span style="font-size: 11px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
                         {other_pct:.0f}%
@@ -153,7 +153,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
                     </span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="display: inline-block; width: 12px; height: 12px; background: #f472b6; border-radius: 3px;"></span>
+                    <span style="display: inline-block; width: 12px; height: 12px; background: #f97316; border-radius: 3px;"></span>
                     <span style="font-size: 13px; color: #e2e8f0;">FFN{' (SwiGLU)' if estimate.uses_swiglu else ''}</span>
                     <span style="font-size: 12px; color: #94a3b8; font-family: 'JetBrains Mono', monospace; margin-left: auto;">
                         {estimate.ffn_activations_gb:.2f}GB

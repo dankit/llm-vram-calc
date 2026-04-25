@@ -1,14 +1,14 @@
 """Static lookup tables for GPUs, dtypes, and model presets."""
 
 GPU_SPECS = {
-    "NVIDIA GH200 96GB": {"vram_gb": 96, "bandwidth_gbps": 4000},
-    "NVIDIA H200 141GB": {"vram_gb": 141, "bandwidth_gbps": 4800},
-    "NVIDIA H100 SXM 80GB": {"vram_gb": 80, "bandwidth_gbps": 3350},
-    "NVIDIA A100 80GB": {"vram_gb": 80, "bandwidth_gbps": 2039},
-    "NVIDIA L40S 48GB": {"vram_gb": 48, "bandwidth_gbps": 864},
-    "NVIDIA RTX 5090 32GB": {"vram_gb": 32, "bandwidth_gbps": 1792},
-    "NVIDIA RTX 4090 24GB": {"vram_gb": 24, "bandwidth_gbps": 1008},
-    "AMD Instinct MI300X 192GB": {"vram_gb": 192, "bandwidth_gbps": 5300},
+    "NVIDIA GH200 96GB": {"vram_gb": 96},
+    "NVIDIA H200 141GB": {"vram_gb": 141},
+    "NVIDIA H100 SXM 80GB": {"vram_gb": 80},
+    "NVIDIA A100 80GB": {"vram_gb": 80},
+    "NVIDIA L40S 48GB": {"vram_gb": 48},
+    "NVIDIA RTX 5090 32GB": {"vram_gb": 32},
+    "NVIDIA RTX 4090 24GB": {"vram_gb": 24},
+    "AMD Instinct MI300X 192GB": {"vram_gb": 192},
 }
 
 DTYPE_BYTES = {

@@ -44,10 +44,9 @@ def load_custom_gpu_specs() -> Dict[str, dict]:
             continue
         try:
             vram_gb = _coerce_positive_float(spec["vram_gb"], "VRAM")
-            bandwidth_gbps = _coerce_positive_float(spec["bandwidth_gbps"], "Bandwidth")
         except (KeyError, TypeError, ValueError):
             continue
-        cleaned[name] = {"vram_gb": vram_gb, "bandwidth_gbps": bandwidth_gbps}
+        cleaned[name] = {"vram_gb": vram_gb}
     return cleaned
 
 
@@ -56,14 +55,13 @@ def get_all_gpu_specs() -> Dict[str, dict]:
     return {**GPU_SPECS, **load_custom_gpu_specs()}
 
 
-def save_custom_gpu_spec(name: str, vram_gb: float, bandwidth_gbps: float) -> Dict[str, dict]:
+def save_custom_gpu_spec(name: str, vram_gb: float) -> Dict[str, dict]:
     """Persist a custom GPU and return updated custom mapping."""
     display_name = " ".join(name.strip().split())
     if not display_name:
         raise ValueError("GPU name is required.")
 
     vram_value = _coerce_positive_float(vram_gb, "VRAM")
-    bandwidth_value = _coerce_positive_float(bandwidth_gbps, "Bandwidth")
 
     if _normalize_name(display_name) in {_normalize_name(n) for n in GPU_SPECS}:
         raise ValueError("This GPU name already exists in built-in presets.")
@@ -74,7 +72,7 @@ def save_custom_gpu_spec(name: str, vram_gb: float, bandwidth_gbps: float) -> Di
         None,
     )
     final_name = duplicate_name or display_name
-    custom_specs[final_name] = {"vram_gb": vram_value, "bandwidth_gbps": bandwidth_value}
+    custom_specs[final_name] = {"vram_gb": vram_value}
 
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
     _CUSTOM_GPU_PATH.write_text(json.dumps(custom_specs, indent=2), encoding="utf-8")

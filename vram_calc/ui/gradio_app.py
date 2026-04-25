@@ -63,9 +63,6 @@ def calculate_and_display(
         return (
             "<div style='padding: 40px; text-align: center; color: #64748b;'>Enter a model ID to calculate VRAM</div>",
             "Enter a model ID to calculate VRAM.",
-            "",
-            "",
-            "",
             gr.update(),
             gr.update(),
             gr.update(),
@@ -132,9 +129,6 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
         return (
             na_viz,
             na_overview,
-            "",
-            "",
-            "",
             0,
             0,
             0,
@@ -173,19 +167,6 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 | > FFN {'(SwiGLU)' if estimate.uses_swiglu else ''} | {estimate.ffn_activations_gb:.2f} |
 | > Other | {estimate.other_activations_gb:.2f} |"""
 
-    fwd_bwd_text = ""
-    if mode == "Training":
-        fwd_bwd_text = f"""
----
-
-### Forward vs Backward Pass
-
-| Pass | Memory (GB) | Description |
-|------|-------------|-------------|
-| Forward | {estimate.forward_pass_gb:.2f} | Activations stored for backprop |
-| Backward | {estimate.backward_pass_gb:.2f} | Gradients + temp computations |
-"""
-
     reco_section = ""
     if reco_text:
         reco_section = f"""
@@ -195,12 +176,21 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 {reco_text}
 """
 
-    overview = f"""
+    training_details = (
+        f"""| Pass | Memory (GB) | Description |
+|------|-------------|-------------|
+| Forward | {estimate.forward_pass_gb:.2f} | Activations stored for backprop |
+| Backward | {estimate.backward_pass_gb:.2f} | Gradients + temp computations |"""
+        if mode == "Training"
+        else "_Training-only details available in Training mode._"
+    )
+
+    details_md = f"""
 ### {'Model FITS' if estimate.fits else 'Model EXCEEDS available VRAM'}
 {reco_section}
----
 
-## Configuration
+<details open>
+<summary><strong>Configuration</strong></summary>
 
 | Setting | Value |
 |---------|-------|
@@ -211,26 +201,11 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 | **Precision** | {dtype} |
 | **Mixed Precision** | {'Yes (FP32 master weights)' if mixed_precision and mode == 'Training' else 'No'} |
 | **Batch x Seq** | {int(batch_size)} x {int(seq_length):,} |
-"""
 
-    architecture = f"""
-### Detected Architecture
+</details>
 
-| Parameter | Value |
-|-----------|-------|
-| Hidden Dim | {estimate.config_hidden:,} |
-| Layers | {estimate.config_layers} |
-| Attn Heads | {estimate.config_heads} |
-| KV Heads | {estimate.config_kv_heads} |
-| FFN Intermediate | {estimate.config_intermediate:,} |
-| Vocab Size | {estimate.config_vocab_size:,} |
-| Uses SwiGLU | {'Yes' if estimate.uses_swiglu else 'No'} |
-| **MoE Architecture** | {'Yes (' + str(estimate.num_experts) + ' experts, ' + str(estimate.experts_per_token) + ' active/token)' if estimate.is_moe else 'No'} |
-| **Active Params** | {estimate.active_params_b:.2f}B |
-"""
-
-    breakdown = f"""
-### Memory Breakdown
+<details>
+<summary><strong>Memory Breakdown</strong></summary>
 
 | Component | Size (GB) |
 |-----------|-----------|
@@ -243,10 +218,23 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 | torch.compile | {estimate.compile_overhead_gb:.2f} |
 | CUDA Overhead | {estimate.cuda_overhead_gb:.2f} |
 | **Total** | **{estimate.total_gb:.2f}** |
-"""
 
-    token_details = f"""
-### Memory Per Token
+</details>
+
+<details>
+<summary><strong>Architecture & Token Details</strong></summary>
+
+| Parameter | Value |
+|-----------|-------|
+| Hidden Dim | {estimate.config_hidden:,} |
+| Layers | {estimate.config_layers} |
+| Attn Heads | {estimate.config_heads} |
+| KV Heads | {estimate.config_kv_heads} |
+| FFN Intermediate | {estimate.config_intermediate:,} |
+| Vocab Size | {estimate.config_vocab_size:,} |
+| Uses SwiGLU | {'Yes' if estimate.uses_swiglu else 'No'} |
+| **MoE Architecture** | {'Yes (' + str(estimate.num_experts) + ' experts, ' + str(estimate.experts_per_token) + ' active/token)' if estimate.is_moe else 'No'} |
+| **Active Params** | {estimate.active_params_b:.2f}B |
 
 | Metric | Value |
 |--------|-------|
@@ -254,16 +242,20 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 | KV cache per token | {estimate.kv_cache_per_token_kb:.2f} KB |
 | +1K tokens adds | ~{estimate.memory_per_token_kb * 1024 / 1024:.1f} MB |
 | +4K tokens adds | ~{estimate.memory_per_token_kb * 4096 / 1024:.1f} MB |
-"""
 
-    training_details = fwd_bwd_text if mode == "Training" else "_Training-only details appear here._"
+</details>
+
+<details>
+<summary><strong>Training Details</strong></summary>
+
+{training_details}
+
+</details>
+"""
 
     return (
         visualization,
-        overview,
-        breakdown,
-        architecture + "\n\n---\n\n" + token_details,
-        training_details,
+        details_md,
         gr.update(),
         gr.update(),
         gr.update(),
@@ -278,10 +270,10 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
     )
 
 
-def save_custom_gpu_and_refresh(name: str, vram_gb: float, bandwidth_gbps: float):
+def save_custom_gpu_and_refresh(name: str, vram_gb: float):
     """Persist a custom GPU and return dropdown updates + status."""
     try:
-        save_custom_gpu_spec(name, vram_gb, bandwidth_gbps)
+        save_custom_gpu_spec(name, vram_gb)
         choices = list(get_all_gpu_specs().keys())
         return (
             gr.update(choices=choices, value=" ".join(name.strip().split())),
@@ -329,9 +321,7 @@ def build_interface():
                     )
                     with gr.Accordion("Add Custom GPU", open=False):
                         custom_gpu_name = gr.Textbox(label="GPU Name", placeholder="e.g. My Lab GPU 64GB")
-                        with gr.Row():
-                            custom_gpu_vram = gr.Number(label="VRAM (GB)", minimum=1, precision=2)
-                            custom_gpu_bandwidth = gr.Number(label="Bandwidth (GB/s)", minimum=1, precision=2)
+                        custom_gpu_vram = gr.Number(label="VRAM (GB)", minimum=1, precision=2)
                         custom_gpu_save_btn = gr.Button("Save Custom GPU", size="sm")
                         custom_gpu_status = gr.HTML("")
                 
@@ -490,18 +480,13 @@ def build_interface():
             
             # Right column - Output
             with gr.Column(scale=2):
-                visualization = gr.HTML(
-                    value="<div style='padding: 60px; text-align: center; color: #64748b; font-size: 16px;'>Configure settings and click Calculate</div>"
-                )
-                with gr.Tabs():
-                    with gr.Tab("Overview"):
-                        overview_md = gr.Markdown("")
-                    with gr.Tab("Memory Breakdown"):
-                        breakdown_md = gr.Markdown("")
-                    with gr.Tab("Architecture & Tokens"):
-                        architecture_md = gr.Markdown("")
-                    with gr.Tab("Training Details"):
-                        training_md = gr.Markdown("")
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        visualization = gr.HTML(
+                            value="<div style='padding: 60px; text-align: center; color: #64748b; font-size: 16px;'>Configure settings and click Calculate</div>"
+                        )
+                    with gr.Column(scale=2):
+                        details_md = gr.Markdown("")
         
         # Manual config inputs
         manual_config_inputs = [
@@ -517,7 +502,7 @@ def build_interface():
             optimizer, lora_enabled, lora_rank,
             use_torch_compile, ddp_enabled, mixed_precision
         ] + manual_config_inputs
-        all_outputs = [visualization, overview_md, breakdown_md, architecture_md, training_md] + manual_config_inputs
+        all_outputs = [visualization, details_md] + manual_config_inputs
         
         # Auto-calculate inputs (excluding manual config)
         auto_calc_inputs = [
@@ -559,7 +544,7 @@ def build_interface():
                         manual_params_b, manual_hidden, manual_layers, manual_heads,
                         manual_kv_heads, manual_intermediate, manual_vocab_size, manual_uses_swiglu,
                         manual_num_experts, manual_experts_per_token, manual_active_params_b]
-        preset_outputs = [model_id, visualization, overview_md, breakdown_md, architecture_md, training_md,
+        preset_outputs = [model_id, visualization, details_md,
                          manual_params_b, manual_hidden, manual_layers, manual_heads,
                          manual_kv_heads, manual_intermediate, manual_vocab_size, manual_uses_swiglu,
                          manual_num_experts, manual_experts_per_token, manual_active_params_b]
@@ -622,7 +607,7 @@ def build_interface():
 
         custom_gpu_save_btn.click(
             fn=save_custom_gpu_and_refresh,
-            inputs=[custom_gpu_name, custom_gpu_vram, custom_gpu_bandwidth],
+            inputs=[custom_gpu_name, custom_gpu_vram],
             outputs=[gpu_dropdown, custom_gpu_status],
         )
     
