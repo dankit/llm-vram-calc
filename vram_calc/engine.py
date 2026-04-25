@@ -6,7 +6,8 @@ import math
 from typing import Optional
 
 from vram_calc.config import resolve_model_config
-from vram_calc.constants import DTYPE_BYTES, GPU_SPECS
+from vram_calc.constants import DTYPE_BYTES
+from vram_calc.custom_gpu_store import get_all_gpu_specs
 from vram_calc.types import VRAMEstimate, VRAMInput, ResolvedModelConfig
 
 
@@ -43,7 +44,10 @@ def _optimizer_states_gb(trainable_params_b: float, optimizer: str) -> float:
 
 def compute_vram_estimate(resolved: ResolvedModelConfig, inp: VRAMInput) -> VRAMEstimate:
     """Compute VRAM estimate from resolved architecture and runtime input."""
-    gpu_spec = GPU_SPECS[inp.gpu_name]
+    gpu_specs = get_all_gpu_specs()
+    if inp.gpu_name not in gpu_specs:
+        raise KeyError(f"Unknown GPU: {inp.gpu_name}")
+    gpu_spec = gpu_specs[inp.gpu_name]
     total_vram_gb = gpu_spec["vram_gb"]
 
     hidden = resolved.hidden

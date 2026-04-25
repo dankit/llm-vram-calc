@@ -2,7 +2,8 @@
 
 import gradio as gr
 
-from vram_calc.constants import DTYPE_BYTES, GPU_SPECS
+from vram_calc.constants import DTYPE_BYTES
+from vram_calc.custom_gpu_store import get_all_gpu_specs, save_custom_gpu_spec
 from vram_calc.engine import estimate_vram
 from vram_calc.types import VRAMInput
 from vram_calc.ui.html import create_na_visualization, create_vram_visualization
@@ -61,6 +62,9 @@ def calculate_and_display(
     if not model_id.strip():
         return (
             "<div style='padding: 40px; text-align: center; color: #64748b;'>Enter a model ID to calculate VRAM</div>",
+            "Enter a model ID to calculate VRAM.",
+            "",
+            "",
             "",
             gr.update(),
             gr.update(),
@@ -105,7 +109,7 @@ def calculate_and_display(
 
     if estimate is None:
         na_viz = create_na_visualization(model_id.strip())
-        na_summary = f"""
+        na_overview = f"""
 ## Could Not Compute
 
 Unable to auto-detect model configuration for `{model_id.strip()}`.
@@ -127,7 +131,10 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 """
         return (
             na_viz,
-            na_summary,
+            na_overview,
+            "",
+            "",
+            "",
             0,
             0,
             0,
@@ -147,7 +154,7 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
     if not estimate.fits:
         if not lora_enabled and mode == "Training":
             recommendations.append("- Enable **LoRA** to dramatically reduce trainable parameters")
-        if "float16" not in dtype.lower() and "int" not in dtype.lower():
+        if "16-bit" not in dtype.lower() and "int" not in dtype.lower():
             recommendations.append("- Use **FP16/BF16** or quantization to reduce model memory")
         if not gradient_checkpointing and mode == "Training":
             recommendations.append("- Enable **gradient checkpointing** to reduce activation memory")
@@ -188,12 +195,12 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 {reco_text}
 """
 
-    summary = f"""
-### {'Model FITS!' if estimate.fits else 'Model EXCEEDS available VRAM!'}
+    overview = f"""
+### {'Model FITS' if estimate.fits else 'Model EXCEEDS available VRAM'}
 {reco_section}
 ---
 
-## Configuration Summary
+## Configuration
 
 | Setting | Value |
 |---------|-------|
@@ -204,9 +211,9 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 | **Precision** | {dtype} |
 | **Mixed Precision** | {'Yes (FP32 master weights)' if mixed_precision and mode == 'Training' else 'No'} |
 | **Batch x Seq** | {int(batch_size)} x {int(seq_length):,} |
+"""
 
----
-
+    architecture = f"""
 ### Detected Architecture
 
 | Parameter | Value |
@@ -220,9 +227,9 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 | Uses SwiGLU | {'Yes' if estimate.uses_swiglu else 'No'} |
 | **MoE Architecture** | {'Yes (' + str(estimate.num_experts) + ' experts, ' + str(estimate.experts_per_token) + ' active/token)' if estimate.is_moe else 'No'} |
 | **Active Params** | {estimate.active_params_b:.2f}B |
+"""
 
----
-
+    breakdown = f"""
 ### Memory Breakdown
 
 | Component | Size (GB) |
@@ -236,9 +243,9 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 | torch.compile | {estimate.compile_overhead_gb:.2f} |
 | CUDA Overhead | {estimate.cuda_overhead_gb:.2f} |
 | **Total** | **{estimate.total_gb:.2f}** |
+"""
 
----
-
+    token_details = f"""
 ### Memory Per Token
 
 | Metric | Value |
@@ -247,12 +254,16 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 | KV cache per token | {estimate.kv_cache_per_token_kb:.2f} KB |
 | +1K tokens adds | ~{estimate.memory_per_token_kb * 1024 / 1024:.1f} MB |
 | +4K tokens adds | ~{estimate.memory_per_token_kb * 4096 / 1024:.1f} MB |
-{fwd_bwd_text}
 """
+
+    training_details = fwd_bwd_text if mode == "Training" else "_Training-only details appear here._"
 
     return (
         visualization,
-        summary,
+        overview,
+        breakdown,
+        architecture + "\n\n---\n\n" + token_details,
+        training_details,
         gr.update(),
         gr.update(),
         gr.update(),
@@ -265,6 +276,19 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
         gr.update(),
         gr.update(),
     )
+
+
+def save_custom_gpu_and_refresh(name: str, vram_gb: float, bandwidth_gbps: float):
+    """Persist a custom GPU and return dropdown updates + status."""
+    try:
+        save_custom_gpu_spec(name, vram_gb, bandwidth_gbps)
+        choices = list(get_all_gpu_specs().keys())
+        return (
+            gr.update(choices=choices, value=" ".join(name.strip().split())),
+            "<span style='color:#22c55e;'>Saved custom GPU.</span>",
+        )
+    except ValueError as exc:
+        return gr.update(), f"<span style='color:#ef4444;'>{exc}</span>"
 
 
 def build_interface():
@@ -289,6 +313,8 @@ def build_interface():
             preset_gemma = gr.Button("Gemma 2 9B", size="sm")
             preset_phi = gr.Button("Phi-3 Mini", size="sm")
         
+        gpu_choices = list(get_all_gpu_specs().keys())
+
         with gr.Row():
             # Left column - Inputs
             with gr.Column(scale=1):
@@ -296,11 +322,18 @@ def build_interface():
                 with gr.Group():
                     gr.Markdown("### Hardware")
                     gpu_dropdown = gr.Dropdown(
-                        choices=list(GPU_SPECS.keys()),
-                        value="NVIDIA RTX 3060 Ti 8GB",
+                        choices=gpu_choices,
+                        value="NVIDIA H100 SXM 80GB",
                         label="GPU Model",
                         info="Single GPU memory estimation"
                     )
+                    with gr.Accordion("Add Custom GPU", open=False):
+                        custom_gpu_name = gr.Textbox(label="GPU Name", placeholder="e.g. My Lab GPU 64GB")
+                        with gr.Row():
+                            custom_gpu_vram = gr.Number(label="VRAM (GB)", minimum=1, precision=2)
+                            custom_gpu_bandwidth = gr.Number(label="Bandwidth (GB/s)", minimum=1, precision=2)
+                        custom_gpu_save_btn = gr.Button("Save Custom GPU", size="sm")
+                        custom_gpu_status = gr.HTML("")
                 
                 with gr.Group():
                     gr.Markdown("### Model")
@@ -310,12 +343,7 @@ def build_interface():
                         placeholder="organization/model-name",
                     )
                     
-                    advanced_config = gr.Checkbox(
-                        value=False,
-                        label="Advanced Model Config",
-                    )
-                    
-                    with gr.Group(visible=False) as advanced_config_group:
+                    with gr.Accordion("Advanced Model Config", open=False):
                         gr.Markdown("*Manually enter values:*")
                         with gr.Row():
                             manual_params_b = gr.Number(
@@ -403,9 +431,9 @@ def build_interface():
                     
                     dtype = gr.Dropdown(
                         choices=list(DTYPE_BYTES.keys()),
-                        value="bfloat16 (BF16)",
+                        value="16-bit (BF16/FP16)",
                         label="Precision",
-                        info="BF16 recommended for training on modern GPUs (Ampere+). FP16 for older GPUs (V100, T4).",
+                        info="Use 16-bit for most modern training/inference workloads.",
                     )
                 
                 with gr.Group():
@@ -448,8 +476,7 @@ def build_interface():
                         label="DDP (Multi-GPU) - adds gradient buffer for sync",
                     )
                 
-                with gr.Group():
-                    gr.Markdown("### Advanced Options")
+                with gr.Accordion("Advanced Runtime Options", open=False):
                     use_torch_compile = gr.Checkbox(
                         value=False,
                         label="torch.compile - adds ~10% for compiled graphs",
@@ -466,7 +493,15 @@ def build_interface():
                 visualization = gr.HTML(
                     value="<div style='padding: 60px; text-align: center; color: #64748b; font-size: 16px;'>Configure settings and click Calculate</div>"
                 )
-                summary = gr.Markdown("")
+                with gr.Tabs():
+                    with gr.Tab("Overview"):
+                        overview_md = gr.Markdown("")
+                    with gr.Tab("Memory Breakdown"):
+                        breakdown_md = gr.Markdown("")
+                    with gr.Tab("Architecture & Tokens"):
+                        architecture_md = gr.Markdown("")
+                    with gr.Tab("Training Details"):
+                        training_md = gr.Markdown("")
         
         # Manual config inputs
         manual_config_inputs = [
@@ -482,7 +517,7 @@ def build_interface():
             optimizer, lora_enabled, lora_rank,
             use_torch_compile, ddp_enabled, mixed_precision
         ] + manual_config_inputs
-        all_outputs = [visualization, summary] + manual_config_inputs
+        all_outputs = [visualization, overview_md, breakdown_md, architecture_md, training_md] + manual_config_inputs
         
         # Auto-calculate inputs (excluding manual config)
         auto_calc_inputs = [
@@ -524,7 +559,7 @@ def build_interface():
                         manual_params_b, manual_hidden, manual_layers, manual_heads,
                         manual_kv_heads, manual_intermediate, manual_vocab_size, manual_uses_swiglu,
                         manual_num_experts, manual_experts_per_token, manual_active_params_b]
-        preset_outputs = [model_id, visualization, summary,
+        preset_outputs = [model_id, visualization, overview_md, breakdown_md, architecture_md, training_md,
                          manual_params_b, manual_hidden, manual_layers, manual_heads,
                          manual_kv_heads, manual_intermediate, manual_vocab_size, manual_uses_swiglu,
                          manual_num_experts, manual_experts_per_token, manual_active_params_b]
@@ -546,13 +581,6 @@ def build_interface():
         preset_phi.click(lambda *args: set_preset_and_calc("microsoft/phi-3-mini-4k-instruct", *args), 
                         inputs=preset_inputs, outputs=preset_outputs)
         
-        # Toggle advanced config visibility
-        advanced_config.change(
-            fn=lambda x: gr.update(visible=x),
-            inputs=advanced_config,
-            outputs=advanced_config_group,
-        )
-        
         # Toggle LoRA rank visibility
         lora_enabled.change(
             fn=lambda x: gr.update(visible=x),
@@ -563,9 +591,7 @@ def build_interface():
         # Auto-default mixed precision based on dtype
         # FP16 needs mixed precision for numerical stability, BF16 usually doesn't
         def update_mixed_precision_default(dtype_val):
-            if "float16" in dtype_val.lower() or "fp16" in dtype_val.lower():
-                return gr.update(value=True)
-            elif "bfloat16" in dtype_val.lower() or "bf16" in dtype_val.lower():
+            if "16-bit" in dtype_val.lower():
                 return gr.update(value=False)
             return gr.update()
         
@@ -592,6 +618,12 @@ def build_interface():
             fn=update_training_visibility,
             inputs=[mode, lora_enabled],
             outputs=[gradient_checkpointing, optimizer, mixed_precision, lora_enabled, lora_rank, ddp_enabled],
+        )
+
+        custom_gpu_save_btn.click(
+            fn=save_custom_gpu_and_refresh,
+            inputs=[custom_gpu_name, custom_gpu_vram, custom_gpu_bandwidth],
+            outputs=[gpu_dropdown, custom_gpu_status],
         )
     
     return demo

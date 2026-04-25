@@ -110,17 +110,24 @@ class VRAMInput:
         manual_experts_per_token: Any,
         manual_active_params_b: Any,
     ) -> VRAMInput:
+        dtype_aliases = {
+            "bfloat16 (bf16)": "16-bit (BF16/FP16)",
+            "float16 (fp16)": "16-bit (BF16/FP16)",
+        }
+
         def _f(x: Any) -> float:
             return float(x) if x else 0.0
 
         def _i(x: Any) -> int:
             return int(x) if x else 0
 
+        normalized_dtype = dtype_aliases.get(dtype.strip().lower(), dtype)
+
         return cls(
             model_id=model_id.strip(),
             gpu_name=gpu_name,
             mode=mode,
-            dtype=dtype,
+            dtype=normalized_dtype,
             batch_size=int(batch_size),
             seq_length=int(seq_length),
             gradient_checkpointing=gradient_checkpointing,

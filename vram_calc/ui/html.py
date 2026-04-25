@@ -7,8 +7,8 @@ def _stat_card(label: str, value: str, color: str, subtitle: str = "") -> str:
     """Generate HTML for a stat card in the visualization grid."""
     subtitle_html = f'<div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">{subtitle}</div>' if subtitle else ''
     return f"""
-        <div style="padding: 20px; background: linear-gradient(135deg, #1e293b, #0f172a); 
-                    border-radius: 14px; text-align: center; border: 1px solid #334155;">
+        <div style="padding: 14px; background: linear-gradient(135deg, #1e293b, #0f172a); 
+                    border-radius: 10px; text-align: center; border: 1px solid #334155;">
             <div style="font-size: 11px; color: #64748b; text-transform: uppercase; 
                         letter-spacing: 1px; margin-bottom: 8px;">{label}</div>
             <div style="font-size: 22px; font-weight: 700; color: {color}; 
@@ -21,8 +21,8 @@ def _breakdown_bar(name: str, value: float, total: float, color: str) -> str:
     """Generate HTML for a breakdown bar in the visualization."""
     pct = (value / total) * 100 if total > 0 else 0
     return f"""
-        <div style="margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+        <div style="margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                 <span style="font-weight: 500; color: #e2e8f0; font-size: 14px;">
                     <span style="display: inline-block; width: 12px; height: 12px; 
                                  background: {color}; border-radius: 3px; margin-right: 8px;"></span>
@@ -32,7 +32,7 @@ def _breakdown_bar(name: str, value: float, total: float, color: str) -> str:
                     {value:.2f} GB ({pct:.1f}%)
                 </span>
             </div>
-            <div style="height: 28px; background: #1e293b; border-radius: 6px; overflow: hidden;">
+            <div style="height: 20px; background: #1e293b; border-radius: 6px; overflow: hidden;">
                 <div style="height: 100%; width: {pct}%; background: linear-gradient(90deg, {color}, {color}dd); 
                             border-radius: 6px; transition: width 0.4s ease;"></div>
             </div>
@@ -172,11 +172,11 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
     
     html = f"""
     <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
-                padding: 28px; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); 
+                padding: 18px; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); 
                 border-radius: 20px; color: #f8fafc; border: 1px solid #334155;">
         
         <!-- Status Header -->
-        <div style="text-align: center; margin-bottom: 32px; padding: 24px; 
+        <div style="text-align: center; margin-bottom: 18px; padding: 14px; 
                     background: {status_bg}; border-radius: 16px; border: 1px solid {status_color}33;">
             <div style="font-size: 32px; font-weight: 800; color: {status_color}; 
                         margin-bottom: 8px; letter-spacing: -0.5px;">
@@ -189,7 +189,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
         </div>
         
         <!-- Main Utilization -->
-        <div style="margin-bottom: 32px; padding: 24px; background: #1e293b; border-radius: 16px;">
+        <div style="margin-bottom: 18px; padding: 14px; background: #1e293b; border-radius: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <span style="font-size: 18px; font-weight: 600; color: #e2e8f0;">
                     VRAM Utilization
@@ -199,7 +199,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
                     {estimate.utilization_pct:.1f}%
                 </span>
             </div>
-            <div style="height: 48px; background: #0f172a; border-radius: 12px; overflow: hidden; 
+            <div style="height: 36px; background: #0f172a; border-radius: 12px; overflow: hidden; 
                         position: relative; border: 2px solid #334155;">
                 <div style="position: absolute; height: 100%; width: {min(util_pct, 100)}%; 
                             background: linear-gradient(90deg, #6366f1, #8b5cf6, #a855f7);
@@ -221,7 +221,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
         {activation_breakdown_html}
         
         <!-- Memory Breakdown -->
-        <div style="padding: 24px; background: #1e293b; border-radius: 16px; margin-bottom: 24px;">
+        <div style="padding: 14px; background: #1e293b; border-radius: 16px; margin-bottom: 14px;">
             <h3 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 600; color: #e2e8f0;">
                 Full Memory Breakdown
             </h3>
@@ -229,7 +229,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
         </div>
         
         <!-- Stats Grid -->
-        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px;">
+        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;">
             {_stat_card(
                 'Total Params' if estimate.is_moe else 'Model Params',
                 f'{estimate.model_params_b:.1f}B',

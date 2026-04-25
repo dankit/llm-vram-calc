@@ -1,25 +1,18 @@
 """Static lookup tables for GPUs, dtypes, and model presets."""
 
 GPU_SPECS = {
-    "NVIDIA RTX 3060 Ti 8GB": {"vram_gb": 8, "bandwidth_gbps": 448},
+    "NVIDIA GH200 96GB": {"vram_gb": 96, "bandwidth_gbps": 4000},
     "NVIDIA H200 141GB": {"vram_gb": 141, "bandwidth_gbps": 4800},
-    "NVIDIA H100 NVL 94GB": {"vram_gb": 94, "bandwidth_gbps": 3958},
-    "NVIDIA H100 80GB": {"vram_gb": 80, "bandwidth_gbps": 3350},
+    "NVIDIA H100 SXM 80GB": {"vram_gb": 80, "bandwidth_gbps": 3350},
     "NVIDIA A100 80GB": {"vram_gb": 80, "bandwidth_gbps": 2039},
-    "NVIDIA A100 40GB": {"vram_gb": 40, "bandwidth_gbps": 1555},
     "NVIDIA L40S 48GB": {"vram_gb": 48, "bandwidth_gbps": 864},
-    "NVIDIA A6000 48GB": {"vram_gb": 48, "bandwidth_gbps": 768},
+    "NVIDIA RTX 5090 32GB": {"vram_gb": 32, "bandwidth_gbps": 1792},
     "NVIDIA RTX 4090 24GB": {"vram_gb": 24, "bandwidth_gbps": 1008},
-    "NVIDIA RTX 3090 24GB": {"vram_gb": 24, "bandwidth_gbps": 936},
-    "NVIDIA V100 32GB": {"vram_gb": 32, "bandwidth_gbps": 900},
-    "NVIDIA V100 16GB": {"vram_gb": 16, "bandwidth_gbps": 900},
-    "NVIDIA A10G 24GB": {"vram_gb": 24, "bandwidth_gbps": 600},
-    "NVIDIA T4 16GB": {"vram_gb": 16, "bandwidth_gbps": 300},
+    "AMD Instinct MI300X 192GB": {"vram_gb": 192, "bandwidth_gbps": 5300},
 }
 
 DTYPE_BYTES = {
-    "bfloat16 (BF16)": 2,
-    "float16 (FP16)": 2,
+    "16-bit (BF16/FP16)": 2,
     "float32 (FP32)": 4,
     "int8 (8-bit Quantized)": 1,
     "int4 (4-bit Quantized)": 0.5,

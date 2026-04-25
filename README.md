@@ -9,9 +9,10 @@ A comprehensive tool for estimating GPU memory requirements for Large Language M
 - **Accurate VRAM Estimation** - Calculate memory requirements for training (full fine-tuning, LoRA) and inference
 - **MoE Support** - Proper handling of Mixture of Experts models (Mixtral, DeepSeek) with active parameter calculations  
 - **Detailed Breakdown** - See exactly where memory goes: weights, gradients, optimizer states, activations, KV cache
-- **Mixed Precision** - Support for FP32, FP16, BF16, INT8, and INT4 quantization
+- **Precision Controls** - Streamlined 16-bit, FP32, INT8, and INT4 precision options
 - **Training Optimizations** - Gradient checkpointing, 8-bit optimizers, DDP overhead estimation
 - **Auto-Detection** - Fetches model configs from HuggingFace or uses built-in presets
+- **Custom GPU Presets** - Add your own GPU specs in the UI and persist them locally
 - **Interactive UI** - Gradio web interface with real-time calculations
 
 Note: I haven't spent too much time testing the manual config setup or huggingface loading versatility.
@@ -61,7 +62,7 @@ inp = VRAMInput(
     model_id="meta-llama/Llama-3.1-8B",
     gpu_name="NVIDIA RTX 4090 24GB",
     mode="Training",
-    dtype="float16 (FP16)",
+    dtype="16-bit (BF16/FP16)",
     batch_size=1,
     seq_length=2048,
     gradient_checkpointing=True,
@@ -95,9 +96,13 @@ Any HuggingFace model with a `config.json` can be auto-detected.
 
 ## Supported GPUs
 
-- NVIDIA H200, H100, A100, L40S, A6000
-- NVIDIA RTX 4090, 3090, 3060 Ti
-- NVIDIA V100, A10G, T4
+Built-in defaults are intentionally compact and modern:
+
+- NVIDIA GH200, H200, H100 SXM, A100, L40S
+- NVIDIA RTX 5090, RTX 4090
+- AMD Instinct MI300X
+
+Custom GPUs can be added from the **Add Custom GPU** section in the UI. Saved entries are persisted to `vram_calc/data/custom_gpus.json`.
 
 ## MoE (Mixture of Experts) Handling
 
