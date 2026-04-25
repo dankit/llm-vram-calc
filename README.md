@@ -2,7 +2,7 @@
 
 A comprehensive tool for estimating GPU memory requirements for Large Language Model (LLM) training and inference. Supports both dense transformers and Mixture of Experts (MoE) architectures with detailed memory breakdowns.
 
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 
 ## Features
 
@@ -55,10 +55,9 @@ Then open `http://localhost:7860` in your browser.
 ### Programmatic Usage
 
 ```python
-from vram_calculator import calculate_vram, GPU_SPECS
+from vram_calc import VRAMInput, estimate_vram, GPU_SPECS
 
-# Calculate VRAM for Llama 3.1 8B training
-estimate = calculate_vram(
+inp = VRAMInput(
     model_id="meta-llama/Llama-3.1-8B",
     gpu_name="NVIDIA RTX 4090 24GB",
     mode="Training",
@@ -70,11 +69,14 @@ estimate = calculate_vram(
     lora_rank=16,
     lora_enabled=True,
 )
+estimate = estimate_vram(inp)
 
 print(f"Total VRAM: {estimate.total_gb:.2f} GB")
 print(f"Fits in GPU: {estimate.fits}")
 print(f"Utilization: {estimate.utilization_pct:.1f}%")
 ```
+
+The compatibility shim `from vram_calculator import calculate_vram, GPU_SPECS` still works with the original keyword-style `calculate_vram(...)` API.
 
 ## Supported Models
 
