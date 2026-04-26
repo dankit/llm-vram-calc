@@ -160,13 +160,6 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 
     reco_text = "\n".join(recommendations) if recommendations else ""
 
-    act_breakdown = ""
-    if mode == "Training":
-        act_breakdown = f"""
-| > Attention | {estimate.attn_activations_gb:.2f} |
-| > FFN {'(SwiGLU)' if estimate.uses_swiglu else ''} | {estimate.ffn_activations_gb:.2f} |
-| > Other | {estimate.other_activations_gb:.2f} |"""
-
     reco_section = ""
     if reco_text:
         reco_section = f"""
@@ -176,79 +169,83 @@ Unable to auto-detect model configuration for `{model_id.strip()}`.
 {reco_text}
 """
 
-    training_details = (
-        f"""| Pass | Memory (GB) | Description |
-|------|-------------|-------------|
-| Forward | {estimate.forward_pass_gb:.2f} | Activations stored for backprop |
-| Backward | {estimate.backward_pass_gb:.2f} | Gradients + temp computations |"""
-        if mode == "Training"
-        else "_Training-only details available in Training mode._"
+    token_mb_per_1k = estimate.memory_per_token_kb
+
+    def _fmt_token_delta(ctx_tokens: int) -> str:
+        delta_mb = token_mb_per_1k * (ctx_tokens / 1024)
+        if delta_mb >= 1024:
+            return f"+{(delta_mb / 1024):.2f} GB"
+        return f"+{delta_mb:.2f} MB"
+
+    token_scale_cards = "".join(
+        [
+            (
+                f"<div style='padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;'>"
+                f"<div style='font-size:11px;color:#94a3b8;'>{ctx:,} tokens</div>"
+                f"<div style='font-size:15px;font-weight:700;color:#e2e8f0;'>{_fmt_token_delta(ctx)}</div>"
+                f"</div>"
+            )
+            for ctx in (8192, 32768, 65536, 131072)
+        ]
     )
 
     details_md = f"""
 ### {'Model FITS' if estimate.fits else 'Model EXCEEDS available VRAM'}
+`{model_id}`  |  {mode}
 {reco_section}
 
 <details open>
-<summary><strong>Configuration</strong></summary>
+<summary><strong>Core Metrics</strong></summary>
 
-| Setting | Value |
-|---------|-------|
-| **Model** | `{model_id}` |
-| **Parameters** | {estimate.model_params_b:.2f}B total, {estimate.trainable_params_b:.3f}B trainable |
-| **GPU** | {gpu_name} |
-| **Mode** | {mode} |
-| **Precision** | {dtype} |
-| **Mixed Precision** | {'Yes (FP32 master weights)' if mixed_precision and mode == 'Training' else 'No'} |
-| **Batch x Seq** | {int(batch_size)} x {int(seq_length):,} |
-
-</details>
-
-<details>
-<summary><strong>Memory Breakdown</strong></summary>
-
-| Component | Size (GB) |
-|-----------|-----------|
-| Model Weights | {estimate.model_weights_gb:.2f} |
-| Gradients | {estimate.gradients_gb:.2f} |
-| Optimizer States | {estimate.optimizer_states_gb:.2f} |
-| Activations (Total) | {estimate.activations_gb:.2f} |{act_breakdown}
-| KV Cache | {estimate.kv_cache_gb:.2f} |
-| DDP Overhead | {estimate.ddp_overhead_gb:.2f} |
-| torch.compile | {estimate.compile_overhead_gb:.2f} |
-| CUDA Overhead | {estimate.cuda_overhead_gb:.2f} |
-| **Total** | **{estimate.total_gb:.2f}** |
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 10px 0;">
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
+    <div style="font-size:11px;color:#94a3b8;">Trainable Parameters</div>
+    <div style="font-size:16px;font-weight:700;color:#e2e8f0;">{estimate.trainable_params_b:.3f}B</div>
+  </div>
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
+    <div style="font-size:11px;color:#94a3b8;">Active Parameters</div>
+    <div style="font-size:16px;font-weight:700;color:#e2e8f0;">{estimate.active_params_b:.2f}B</div>
+  </div>
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
+    <div style="font-size:11px;color:#94a3b8;">Token Memory</div>
+    <div style="font-size:16px;font-weight:700;color:#e2e8f0;">{estimate.memory_per_token_kb:.2f} KB / token</div>
+  </div>
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
+    <div style="font-size:11px;color:#94a3b8;">Total VRAM</div>
+    <div style="font-size:16px;font-weight:700;color:#e2e8f0;">{estimate.total_gb:.2f} GB</div>
+  </div>
+</div>
 
 </details>
 
 <details>
-<summary><strong>Architecture & Token Details</strong></summary>
+<summary><strong>Architecture</strong></summary>
 
-| Parameter | Value |
-|-----------|-------|
-| Hidden Dim | {estimate.config_hidden:,} |
-| Layers | {estimate.config_layers} |
-| Attn Heads | {estimate.config_heads} |
-| KV Heads | {estimate.config_kv_heads} |
-| FFN Intermediate | {estimate.config_intermediate:,} |
-| Vocab Size | {estimate.config_vocab_size:,} |
-| Uses SwiGLU | {'Yes' if estimate.uses_swiglu else 'No'} |
-| **MoE Architecture** | {'Yes (' + str(estimate.num_experts) + ' experts, ' + str(estimate.experts_per_token) + ' active/token)' if estimate.is_moe else 'No'} |
-| **Active Params** | {estimate.active_params_b:.2f}B |
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 10px 0;">
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;"><div style="font-size:11px;color:#94a3b8;">Hidden Dim</div><div style="font-size:15px;font-weight:700;color:#e2e8f0;">{estimate.config_hidden:,}</div></div>
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;"><div style="font-size:11px;color:#94a3b8;">Layers</div><div style="font-size:15px;font-weight:700;color:#e2e8f0;">{estimate.config_layers}</div></div>
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;"><div style="font-size:11px;color:#94a3b8;">Attention Heads</div><div style="font-size:15px;font-weight:700;color:#e2e8f0;">{estimate.config_heads}</div></div>
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;"><div style="font-size:11px;color:#94a3b8;">KV Heads</div><div style="font-size:15px;font-weight:700;color:#e2e8f0;">{estimate.config_kv_heads}</div></div>
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;"><div style="font-size:11px;color:#94a3b8;">FFN Intermediate</div><div style="font-size:15px;font-weight:700;color:#e2e8f0;">{estimate.config_intermediate:,}</div></div>
+  <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;"><div style="font-size:11px;color:#94a3b8;">Vocab Size</div><div style="font-size:15px;font-weight:700;color:#e2e8f0;">{estimate.config_vocab_size:,}</div></div>
+</div>
 
-| Metric | Value |
-|--------|-------|
-| Memory per token | {estimate.memory_per_token_kb:.2f} KB |
-| KV cache per token | {estimate.kv_cache_per_token_kb:.2f} KB |
-| +1K tokens adds | ~{estimate.memory_per_token_kb * 1024 / 1024:.1f} MB |
-| +4K tokens adds | ~{estimate.memory_per_token_kb * 4096 / 1024:.1f} MB |
+- MoE: {'Yes (' + str(estimate.num_experts) + ' experts, ' + str(estimate.experts_per_token) + ' active/token)' if estimate.is_moe else 'No'}
+- SwiGLU: {'Yes' if estimate.uses_swiglu else 'No'}
 
 </details>
 
 <details>
-<summary><strong>Training Details</strong></summary>
+<summary><strong>Token Scaling (Common Context Lengths)</strong></summary>
 
-{training_details}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 10px 0;">
+{token_scale_cards}
+</div>
+
+<div style="font-size:12px;color:#94a3b8;margin-top:4px;">
+In inference mode, this growth is primarily driven by KV cache. Estimated KV-cache growth is
+<strong>{estimate.kv_cache_per_token_kb:.2f} KB/token</strong> under the current batch/model setup.
+</div>
 
 </details>
 """
@@ -478,15 +475,12 @@ def build_interface():
                     size="lg",
                 )
             
-            # Right column - Output
+            # Main result area
             with gr.Column(scale=2):
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        visualization = gr.HTML(
-                            value="<div style='padding: 60px; text-align: center; color: #64748b; font-size: 16px;'>Configure settings and click Calculate</div>"
-                        )
-                    with gr.Column(scale=2):
-                        details_md = gr.Markdown("")
+                visualization = gr.HTML(
+                    value="<div style='padding: 60px; text-align: center; color: #64748b; font-size: 16px;'>Configure settings and click Calculate</div>"
+                )
+                details_md = gr.Markdown("")
         
         # Manual config inputs
         manual_config_inputs = [
