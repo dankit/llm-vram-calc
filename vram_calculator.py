@@ -3,35 +3,29 @@
 from vram_calc import (
     DTYPE_BYTES,
     GPU_SPECS,
-    MODEL_PRESETS,
-    ManualModelConfig,
-    ResolvedModelConfig,
+    ArchitectureConfig,
     VRAMEstimate,
     VRAMInput,
     calculate_vram,
     compute_vram_estimate,
-    estimate_params_from_config,
+    estimate_params_from_architecture,
     estimate_vram,
-    fetch_model_config,
+    finalize_architecture,
     launch_app,
-    resolve_model_config,
 )
 
 __all__ = [
     "DTYPE_BYTES",
     "GPU_SPECS",
-    "MODEL_PRESETS",
-    "ManualModelConfig",
-    "ResolvedModelConfig",
+    "ArchitectureConfig",
     "VRAMEstimate",
     "VRAMInput",
     "calculate_vram",
     "compute_vram_estimate",
-    "estimate_params_from_config",
+    "estimate_params_from_architecture",
     "estimate_vram",
-    "fetch_model_config",
+    "finalize_architecture",
     "launch_app",
-    "resolve_model_config",
 ]
 
 

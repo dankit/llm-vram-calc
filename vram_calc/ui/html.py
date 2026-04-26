@@ -261,8 +261,8 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
     return html
 
 
-def create_na_visualization(model_id: str) -> str:
-    """Create visualization when model config cannot be determined."""
+def create_na_visualization(error_message: str = "") -> str:
+    """Create visualization when architecture input is invalid."""
     return f"""
     <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
                 padding: 28px; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); 
@@ -274,17 +274,16 @@ def create_na_visualization(model_id: str) -> str:
                 Could Not Compute
             </div>
             <div style="font-size: 16px; color: #94a3b8; max-width: 500px; margin: 0 auto; line-height: 1.6;">
-                Unable to auto-detect configuration for: <code style="background: #1e293b; padding: 4px 8px; 
-                border-radius: 4px; color: #e2e8f0;">{model_id}</code>
+                Architecture input is incomplete or invalid.
             </div>
             
             <div style="margin-top: 32px; padding: 24px; background: linear-gradient(135deg, #1e3a5f, #1e293b); border-radius: 12px; 
                         text-align: left; max-width: 520px; margin-left: auto; margin-right: auto; border: 1px solid #3b82f6;">
                 <div style="font-size: 16px; font-weight: 600; color: #60a5fa; margin-bottom: 16px;">
-                    Please enter model config manually:
+                    Please provide valid architecture values:
                 </div>
                 <div style="color: #e2e8f0; font-size: 14px; line-height: 1.8;">
-                    <p style="margin: 0 0 12px 0;">Enable <strong>Advanced Model Config</strong> on the left and provide at minimum:</p>
+                    <p style="margin: 0 0 12px 0;">Provide at minimum:</p>
                     <ul style="margin: 0; padding-left: 20px; color: #94a3b8;">
                         <li><strong style="color: #e2e8f0;">Parameters (B)</strong> - Total model parameters in billions</li>
                         <li><strong style="color: #e2e8f0;">Hidden Dim</strong> - Hidden dimension size (e.g., 4096)</li>
@@ -296,13 +295,7 @@ def create_na_visualization(model_id: str) -> str:
                 </div>
             </div>
             
-            <div style="margin-top: 24px; padding: 16px; background: #1e293b; border-radius: 12px; 
-                        max-width: 520px; margin-left: auto; margin-right: auto;">
-                <div style="font-size: 13px; color: #64748b;">
-                    <strong style="color: #94a3b8;">Alternatively:</strong> Select a model from the <strong>Quick Presets</strong> above, 
-                    or use the exact HuggingFace model ID (e.g., <code style="background: #0f172a; padding: 2px 6px; border-radius: 4px;">meta-llama/Llama-3.1-8B</code>)
-                </div>
-            </div>
+            {"<div style='margin-top: 24px; color: #94a3b8; font-size: 13px;'>" + error_message + "</div>" if error_message else ""}
         </div>
     </div>
     """

@@ -1,9 +1,12 @@
-"""Datatypes for inputs, resolved architecture, and estimation results."""
+"""Datatypes for architecture input and VRAM estimation results."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict
+from dataclasses import dataclass
+from typing import Any, Dict, Literal
+
+AttentionType = Literal["mha", "gqa", "mqa"]
+FFNType = Literal["dense", "moe"]
 
 
 @dataclass
@@ -44,22 +47,26 @@ class VRAMEstimate:
     active_params_b: float = 0.0
     memory_per_token_kb: float = 0.0
     kv_cache_per_token_kb: float = 0.0
+    attention_type: str = "mha"
+    ffn_type: str = "dense"
 
 
 @dataclass
-class ManualModelConfig:
-    """Optional overrides when auto-detection is missing or wrong."""
+class ArchitectureConfig:
+    """User-provided architecture definition for dynamic calculations."""
 
-    params_b: float = 0.0
-    hidden: int = 0
-    layers: int = 0
-    heads: int = 0
-    kv_heads: int = 0
-    intermediate: int = 0
-    vocab_size: int = 0
-    uses_swiglu: str = "Auto"
-    num_experts: int = 0
-    experts_per_token: int = 0
+    params_b: float
+    hidden: int
+    layers: int
+    heads: int
+    kv_heads: int
+    intermediate_size: int
+    vocab_size: int
+    uses_swiglu: bool
+    attention_type: AttentionType
+    ffn_type: FFNType
+    num_experts: int = 1
+    experts_per_token: int = 1
     active_params_b: float = 0.0
 
 
@@ -67,7 +74,7 @@ class ManualModelConfig:
 class VRAMInput:
     """Single object describing one VRAM estimation scenario."""
 
-    model_id: str
+    architecture: ArchitectureConfig
     gpu_name: str
     mode: str
     dtype: str
@@ -80,12 +87,22 @@ class VRAMInput:
     use_torch_compile: bool = False
     ddp_enabled: bool = False
     mixed_precision: bool = False
-    manual: ManualModelConfig = field(default_factory=ManualModelConfig)
-
     @classmethod
     def from_gradio(
         cls,
-        model_id: str,
+        params_b: Any,
+        hidden: Any,
+        layers: Any,
+        heads: Any,
+        kv_heads: Any,
+        intermediate_size: Any,
+        vocab_size: Any,
+        uses_swiglu: bool,
+        attention_type: str,
+        ffn_type: str,
+        num_experts: Any,
+        experts_per_token: Any,
+        active_params_b: Any,
         gpu_name: str,
         mode: str,
         dtype: str,
@@ -98,17 +115,6 @@ class VRAMInput:
         use_torch_compile: bool,
         ddp_enabled: bool,
         mixed_precision: bool,
-        manual_params_b: Any,
-        manual_hidden: Any,
-        manual_layers: Any,
-        manual_heads: Any,
-        manual_kv_heads: Any,
-        manual_intermediate: Any,
-        manual_vocab_size: Any,
-        manual_uses_swiglu: str,
-        manual_num_experts: Any,
-        manual_experts_per_token: Any,
-        manual_active_params_b: Any,
     ) -> VRAMInput:
         dtype_aliases = {
             "bfloat16 (bf16)": "16-bit (BF16/FP16)",
@@ -123,8 +129,24 @@ class VRAMInput:
 
         normalized_dtype = dtype_aliases.get(dtype.strip().lower(), dtype)
 
+        architecture = ArchitectureConfig(
+            params_b=_f(params_b),
+            hidden=_i(hidden),
+            layers=_i(layers),
+            heads=_i(heads),
+            kv_heads=_i(kv_heads),
+            intermediate_size=_i(intermediate_size),
+            vocab_size=_i(vocab_size),
+            uses_swiglu=bool(uses_swiglu),
+            attention_type=attention_type.strip().lower(),  # type: ignore[arg-type]
+            ffn_type=ffn_type.strip().lower(),  # type: ignore[arg-type]
+            num_experts=_i(num_experts),
+            experts_per_token=_i(experts_per_token),
+            active_params_b=_f(active_params_b),
+        )
+
         return cls(
-            model_id=model_id.strip(),
+            architecture=architecture,
             gpu_name=gpu_name,
             mode=mode,
             dtype=normalized_dtype,
@@ -137,36 +159,4 @@ class VRAMInput:
             use_torch_compile=use_torch_compile,
             ddp_enabled=ddp_enabled,
             mixed_precision=mixed_precision,
-            manual=ManualModelConfig(
-                params_b=_f(manual_params_b),
-                hidden=_i(manual_hidden),
-                layers=_i(manual_layers),
-                heads=_i(manual_heads),
-                kv_heads=_i(manual_kv_heads),
-                intermediate=_i(manual_intermediate),
-                vocab_size=_i(manual_vocab_size),
-                uses_swiglu=manual_uses_swiglu or "Auto",
-                num_experts=_i(manual_num_experts),
-                experts_per_token=_i(manual_experts_per_token),
-                active_params_b=_f(manual_active_params_b),
-            ),
         )
-
-
-@dataclass
-class ResolvedModelConfig:
-    """Architecture and scale after merging presets, HF config, and manual fields."""
-
-    model_id: str
-    params_b: float
-    hidden: int
-    layers: int
-    heads: int
-    kv_heads: int
-    vocab_size: int
-    intermediate_size: int
-    uses_swiglu: bool
-    num_experts: int
-    experts_per_token: int
-    is_moe: bool
-    active_params_b: float

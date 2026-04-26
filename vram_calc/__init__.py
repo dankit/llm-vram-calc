@@ -1,16 +1,11 @@
-"""LLM VRAM estimation: presets, Hugging Face config resolution, and memory math."""
+"""LLM VRAM estimation from explicit architecture and runtime inputs."""
 
-from vram_calc.constants import DTYPE_BYTES, GPU_SPECS, MODEL_PRESETS
-from vram_calc.config import (
-    estimate_params_from_config,
-    fetch_model_config,
-    resolve_model_config,
-)
+from vram_calc.constants import DTYPE_BYTES, GPU_SPECS
+from vram_calc.config import estimate_params_from_architecture, finalize_architecture
 from vram_calc.engine import compute_vram_estimate, estimate_vram
 from vram_calc.legacy import calculate_vram
 from vram_calc.types import (
-    ManualModelConfig,
-    ResolvedModelConfig,
+    ArchitectureConfig,
     VRAMEstimate,
     VRAMInput,
 )
@@ -18,18 +13,15 @@ from vram_calc.types import (
 __all__ = [
     "DTYPE_BYTES",
     "GPU_SPECS",
-    "MODEL_PRESETS",
-    "ManualModelConfig",
-    "ResolvedModelConfig",
+    "ArchitectureConfig",
     "VRAMEstimate",
     "VRAMInput",
     "calculate_vram",
     "compute_vram_estimate",
-    "estimate_params_from_config",
+    "estimate_params_from_architecture",
     "estimate_vram",
-    "fetch_model_config",
+    "finalize_architecture",
     "launch_app",
-    "resolve_model_config",
 ]
 
 
