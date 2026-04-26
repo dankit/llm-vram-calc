@@ -35,7 +35,7 @@ def calculate_and_display(
     kv_heads: int,
     intermediate_size: int,
     vocab_size: int,
-    uses_swiglu: bool,
+    ffn_multiplier: float,
     attention_type: str,
     ffn_type: str,
     num_experts: int,
@@ -64,7 +64,7 @@ def calculate_and_display(
             kv_heads,
             intermediate_size,
             vocab_size,
-            uses_swiglu,
+            ffn_multiplier,
             attention_type,
             ffn_type,
             num_experts,
@@ -100,6 +100,7 @@ def calculate_and_display(
 - Hidden/Layers: **{estimate.config_hidden:,} / {estimate.config_layers}**
 - Heads/KV Heads: **{estimate.config_heads} / {estimate.config_kv_heads}**
 - Experts (if MoE): **{estimate.num_experts} total, {estimate.experts_per_token} active**
+- FFN multiplier: **{estimate.ffn_multiplier:.2f}**
 - Total VRAM: **{estimate.total_gb:.2f} GB** ({estimate.utilization_pct:.1f}% of {estimate.available_gb:.1f} GB)
 - KV cache growth: **{estimate.kv_cache_per_token_kb:.2f} KB/token**
 """
@@ -141,14 +142,20 @@ def build_interface():
                         layers = gr.Number(value=32, label="Layers", minimum=1, precision=0)
                     with gr.Row():
                         heads = gr.Number(value=32, label="Attention Heads", minimum=1, precision=0)
-                        kv_heads = gr.Number(value=8, label="KV Heads (for GQA)", minimum=1, precision=0)
+                        kv_heads = gr.Number(value=8, label="KV Heads (GQA only)", minimum=1, precision=0, visible=True)
                     with gr.Row():
                         intermediate_size = gr.Number(value=14336, label="FFN Intermediate Size", minimum=1, precision=0)
                         vocab_size = gr.Number(value=128256, label="Vocab Size", minimum=1, precision=0)
 
-                    attention_type = gr.Radio(choices=["mha", "gqa", "mqa"], value="gqa", label="Attention Type")
+                    attention_type = gr.Radio(choices=["mha", "gqa"], value="gqa", label="Attention Type")
                     ffn_type = gr.Radio(choices=["dense", "moe"], value="dense", label="FFN Type")
-                    uses_swiglu = gr.Checkbox(value=True, label="Use SwiGLU FFN")
+                    ffn_multiplier = gr.Number(
+                        value=3.0,
+                        minimum=0.1,
+                        precision=2,
+                        label="FFN Multiplier",
+                        info="Controls FFN expansion/activation shape (higher means more FFN runtime memory).",
+                    )
 
                     with gr.Group(visible=False) as moe_group:
                         gr.Markdown("#### MoE Settings")
@@ -162,9 +169,6 @@ def build_interface():
                             minimum=0,
                             precision=3,
                         )
-                    with gr.Group(visible=False) as gqa_group:
-                        gr.Markdown("KV heads are used only for GQA.")
-
                 with gr.Group():
                     gr.Markdown("### Runtime")
                     mode = gr.Radio(choices=["Training", "Inference"], value="Training", label="Mode")
@@ -204,7 +208,7 @@ def build_interface():
             kv_heads,
             intermediate_size,
             vocab_size,
-            uses_swiglu,
+            ffn_multiplier,
             attention_type,
             ffn_type,
             num_experts,
@@ -231,7 +235,7 @@ def build_interface():
             component.change(fn=calculate_and_display, inputs=all_inputs, outputs=all_outputs)
 
         ffn_type.change(fn=lambda v: gr.update(visible=v == "moe"), inputs=ffn_type, outputs=moe_group)
-        attention_type.change(fn=lambda v: gr.update(visible=v == "gqa"), inputs=attention_type, outputs=gqa_group)
+        attention_type.change(fn=lambda v: gr.update(visible=v == "gqa"), inputs=attention_type, outputs=kv_heads)
         lora_enabled.change(fn=lambda x: gr.update(visible=x), inputs=lora_enabled, outputs=lora_rank)
         mode.change(
             fn=lambda m: (

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Literal
 
-AttentionType = Literal["mha", "gqa", "mqa"]
+AttentionType = Literal["mha", "gqa"]
 FFNType = Literal["dense", "moe"]
 
 
@@ -33,7 +33,7 @@ class VRAMEstimate:
     other_activations_gb: float = 0.0
     forward_pass_gb: float = 0.0
     backward_pass_gb: float = 0.0
-    uses_swiglu: bool = True
+    ffn_multiplier: float = 3.0
     ddp_overhead_gb: float = 0.0
     config_hidden: int = 0
     config_layers: int = 0
@@ -62,7 +62,7 @@ class ArchitectureConfig:
     kv_heads: int
     intermediate_size: int
     vocab_size: int
-    uses_swiglu: bool
+    ffn_multiplier: float
     attention_type: AttentionType
     ffn_type: FFNType
     num_experts: int = 1
@@ -97,7 +97,7 @@ class VRAMInput:
         kv_heads: Any,
         intermediate_size: Any,
         vocab_size: Any,
-        uses_swiglu: bool,
+        ffn_multiplier: Any,
         attention_type: str,
         ffn_type: str,
         num_experts: Any,
@@ -137,7 +137,7 @@ class VRAMInput:
             kv_heads=_i(kv_heads),
             intermediate_size=_i(intermediate_size),
             vocab_size=_i(vocab_size),
-            uses_swiglu=bool(uses_swiglu),
+            ffn_multiplier=_f(ffn_multiplier),
             attention_type=attention_type.strip().lower(),  # type: ignore[arg-type]
             ffn_type=ffn_type.strip().lower(),  # type: ignore[arg-type]
             num_experts=_i(num_experts),

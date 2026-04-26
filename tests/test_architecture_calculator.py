@@ -37,12 +37,28 @@ class ArchitectureCalculatorTests(unittest.TestCase):
             kv_heads=8,
             intermediate_size=14336,
             vocab_size=128256,
-            uses_swiglu=True,
+            ffn_multiplier=3.0,
             attention_type="mha",
             ffn_type="dense",
         )
         finalized = finalize_architecture(arch)
         self.assertEqual(finalized.kv_heads, 32)
+
+    def test_mha_ignores_user_kv_heads_in_estimate(self) -> None:
+        base = dict(
+            params_b=8.0,
+            hidden=4096,
+            layers=32,
+            heads=32,
+            intermediate_size=14336,
+            vocab_size=128256,
+            ffn_multiplier=3.0,
+            attention_type="mha",
+            ffn_type="dense",
+        )
+        estimate_a = estimate_vram(_base_input(ArchitectureConfig(kv_heads=1, **base)))
+        estimate_b = estimate_vram(_base_input(ArchitectureConfig(kv_heads=16, **base)))
+        self.assertAlmostEqual(estimate_a.kv_cache_gb, estimate_b.kv_cache_gb, places=6)
 
     def test_gqa_uses_provided_kv_heads_for_kv_cache(self) -> None:
         gqa_arch = ArchitectureConfig(
@@ -53,7 +69,7 @@ class ArchitectureCalculatorTests(unittest.TestCase):
             kv_heads=8,
             intermediate_size=14336,
             vocab_size=128256,
-            uses_swiglu=True,
+            ffn_multiplier=3.0,
             attention_type="gqa",
             ffn_type="dense",
         )
@@ -65,7 +81,7 @@ class ArchitectureCalculatorTests(unittest.TestCase):
             kv_heads=8,
             intermediate_size=14336,
             vocab_size=128256,
-            uses_swiglu=True,
+            ffn_multiplier=3.0,
             attention_type="mha",
             ffn_type="dense",
         )
@@ -82,7 +98,7 @@ class ArchitectureCalculatorTests(unittest.TestCase):
             kv_heads=8,
             intermediate_size=14336,
             vocab_size=128256,
-            uses_swiglu=True,
+            ffn_multiplier=3.0,
             attention_type="gqa",
             ffn_type="moe",
             num_experts=8,

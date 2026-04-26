@@ -12,7 +12,7 @@ Architecture-first VRAM estimation for transformer training and inference.
 ## Features
 
 - Dynamic architecture builder (no preset dependency)
-- Attention mode support: `MHA`, `GQA`, `MQA`
+- Attention mode support: `MHA`, `GQA`
 - FFN mode support: `Dense`, `MoE`
 - Runtime controls: training/inference, precision, batch size, context length
 - Training options: checkpointing, optimizer, LoRA, DDP overhead
@@ -47,7 +47,7 @@ arch = ArchitectureConfig(
     kv_heads=8,
     intermediate_size=14336,
     vocab_size=128256,
-    uses_swiglu=True,
+    ffn_multiplier=3.0,
     attention_type="gqa",
     ffn_type="dense",
 )
@@ -77,10 +77,10 @@ Required:
 - hidden size
 - layers
 - heads
-- KV heads (used for GQA, auto-derived for MHA/MQA)
+- KV heads (used only for GQA; auto-derived for MHA)
 - intermediate size
 - vocab size
-- attention type (`mha`, `gqa`, `mqa`)
+- attention type (`mha`, `gqa`)
 - FFN type (`dense`, `moe`)
 
 MoE-only:
@@ -93,7 +93,6 @@ MoE-only:
 - Hidden size must be divisible by heads.
 - KV heads must divide heads for GQA.
 - MHA forces `kv_heads = heads`.
-- MQA forces `kv_heads = 1`.
 - For MoE, experts-per-token must be less than or equal to experts.
 
 ## Notes

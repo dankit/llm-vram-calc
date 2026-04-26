@@ -69,7 +69,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
     for name, value in estimate.breakdown.items():
         if value > 0.001:
             color = colors.get(name, "#64748b")
-            display_name = "Activations (FFN/SwiGLU)" if name == "Activations (FFN)" and estimate.uses_swiglu else name
+            display_name = "Activations (FFN)" if name == "Activations (FFN)" else name
             breakdown_html += _breakdown_bar(display_name, value, total_breakdown, color)
     
     # Utilization bar
@@ -154,7 +154,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="display: inline-block; width: 12px; height: 12px; background: #f97316; border-radius: 3px;"></span>
-                    <span style="font-size: 13px; color: #e2e8f0;">FFN{' (SwiGLU)' if estimate.uses_swiglu else ''}</span>
+                    <span style="font-size: 13px; color: #e2e8f0;">FFN</span>
                     <span style="font-size: 12px; color: #94a3b8; font-family: 'JetBrains Mono', monospace; margin-left: auto;">
                         {estimate.ffn_activations_gb:.2f}GB
                     </span>

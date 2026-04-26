@@ -14,7 +14,10 @@ def estimate_params_from_architecture(arch: ArchitectureConfig) -> float:
     vocab_size = arch.vocab_size
     intermediate = arch.intermediate_size
     heads = max(1, arch.heads)
-    kv_heads = max(1, arch.kv_heads)
+    if arch.attention_type == "gqa":
+        kv_heads = max(1, arch.kv_heads)
+    else:
+        kv_heads = heads
 
     head_dim = hidden // heads if heads > 0 else 128
 
@@ -25,7 +28,7 @@ def estimate_params_from_architecture(arch: ArchitectureConfig) -> float:
     o_params = hidden * hidden
     attn_params = q_params + k_params + v_params + o_params
 
-    ffn_multiplier = 3 if arch.uses_swiglu else 2
+    ffn_multiplier = arch.ffn_multiplier
     if arch.ffn_type == "moe":
         mlp_params = hidden * intermediate * ffn_multiplier * max(1, arch.num_experts)
         router_params = hidden * max(1, arch.num_experts)
@@ -51,13 +54,11 @@ def finalize_architecture(arch: ArchitectureConfig) -> ArchitectureConfig:
         raise ValueError("Hidden size must be divisible by attention heads.")
 
     attention_type = arch.attention_type.lower()
-    if attention_type not in {"mha", "gqa", "mqa"}:
-        raise ValueError("Attention type must be one of: mha, gqa, mqa.")
+    if attention_type not in {"mha", "gqa"}:
+        raise ValueError("Attention type must be one of: mha, gqa.")
 
     if attention_type == "mha":
         kv_heads = arch.heads
-    elif attention_type == "mqa":
-        kv_heads = 1
     else:
         kv_heads = arch.kv_heads
 
@@ -66,6 +67,8 @@ def finalize_architecture(arch: ArchitectureConfig) -> ArchitectureConfig:
 
     if arch.intermediate_size <= 0:
         raise ValueError("FFN intermediate size must be > 0.")
+    if arch.ffn_multiplier <= 0:
+        raise ValueError("FFN multiplier must be > 0.")
 
     if arch.vocab_size <= 0:
         raise ValueError("Vocab size must be > 0.")

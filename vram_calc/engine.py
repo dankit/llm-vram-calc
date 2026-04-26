@@ -45,7 +45,11 @@ def calc_weights_and_states(
     arch: ArchitectureConfig, inp: VRAMInput, bytes_per_param: float
 ) -> tuple[float, float, float, float, float]:
     """Calculate model weights, grads, optimizer states, trainable params, and DDP overhead."""
-    model_weights_gb = _weights_gb(arch.params_b, bytes_per_param)
+    resident_params_b = arch.params_b
+    if arch.ffn_type == "moe" and inp.mode == "Inference":
+        # Optional sparse-expert residency behavior for inference scenarios.
+        resident_params_b = min(arch.params_b, max(arch.active_params_b, arch.params_b * 0.35))
+    model_weights_gb = _weights_gb(resident_params_b, bytes_per_param)
     trainable_params_b = _trainable_params_b(
         arch.params_b, inp.lora_enabled, inp.mode, inp.lora_rank, arch.hidden, arch.layers
     )
@@ -103,10 +107,9 @@ def calc_ffn_memory(arch: ArchitectureConfig, inp: VRAMInput, bytes_activation: 
         effective_intermediate = intermediate
 
     ffn_input = batch_size * seq_length * hidden * bytes_activation
-    if arch.uses_swiglu:
-        per_layer = ffn_input + (3 * batch_size * seq_length * effective_intermediate * bytes_activation)
-    else:
-        per_layer = ffn_input + (batch_size * seq_length * effective_intermediate * bytes_activation)
+    per_layer = ffn_input + (
+        arch.ffn_multiplier * batch_size * seq_length * effective_intermediate * bytes_activation
+    )
 
     if arch.ffn_type == "moe":
         per_layer += batch_size * seq_length * arch.num_experts * bytes_activation
@@ -218,7 +221,7 @@ def compute_vram_estimate(arch: ArchitectureConfig, inp: VRAMInput) -> VRAMEstim
         other_activations_gb=other_activations_gb,
         forward_pass_gb=forward_pass_gb,
         backward_pass_gb=backward_pass_gb,
-        uses_swiglu=arch.uses_swiglu,
+        ffn_multiplier=arch.ffn_multiplier,
         ddp_overhead_gb=ddp_overhead_gb,
         config_hidden=arch.hidden,
         config_layers=arch.layers,
