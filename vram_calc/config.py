@@ -28,12 +28,11 @@ def estimate_params_from_architecture(arch: ArchitectureConfig) -> float:
     o_params = hidden * hidden
     attn_params = q_params + k_params + v_params + o_params
 
-    ffn_multiplier = arch.ffn_multiplier
     if arch.ffn_type == "moe":
-        mlp_params = hidden * intermediate * ffn_multiplier * max(1, arch.num_experts)
+        mlp_params = hidden * intermediate * max(1, arch.num_experts)
         router_params = hidden * max(1, arch.num_experts)
     else:
-        mlp_params = hidden * intermediate * ffn_multiplier
+        mlp_params = hidden * intermediate
         router_params = 0
 
     ln_params = hidden * 4
@@ -67,8 +66,6 @@ def finalize_architecture(arch: ArchitectureConfig) -> ArchitectureConfig:
 
     if arch.intermediate_size <= 0:
         raise ValueError("FFN intermediate size must be > 0.")
-    if arch.ffn_multiplier <= 0:
-        raise ValueError("FFN multiplier must be > 0.")
 
     if arch.vocab_size <= 0:
         raise ValueError("Vocab size must be > 0.")

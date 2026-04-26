@@ -33,19 +33,15 @@ class VRAMEstimate:
     other_activations_gb: float = 0.0
     forward_pass_gb: float = 0.0
     backward_pass_gb: float = 0.0
-    ffn_multiplier: float = 3.0
     ddp_overhead_gb: float = 0.0
     config_hidden: int = 0
     config_layers: int = 0
     config_heads: int = 0
     config_kv_heads: int = 0
-    config_intermediate: int = 0
-    config_vocab_size: int = 0
     is_moe: bool = False
     num_experts: int = 1
     experts_per_token: int = 1
     active_params_b: float = 0.0
-    memory_per_token_kb: float = 0.0
     kv_cache_per_token_kb: float = 0.0
     attention_type: str = "mha"
     ffn_type: str = "dense"
@@ -62,7 +58,6 @@ class ArchitectureConfig:
     kv_heads: int
     intermediate_size: int
     vocab_size: int
-    ffn_multiplier: float
     attention_type: AttentionType
     ffn_type: FFNType
     num_experts: int = 1
@@ -97,7 +92,6 @@ class VRAMInput:
         kv_heads: Any,
         intermediate_size: Any,
         vocab_size: Any,
-        ffn_multiplier: Any,
         attention_type: str,
         ffn_type: str,
         num_experts: Any,
@@ -137,7 +131,6 @@ class VRAMInput:
             kv_heads=_i(kv_heads),
             intermediate_size=_i(intermediate_size),
             vocab_size=_i(vocab_size),
-            ffn_multiplier=_f(ffn_multiplier),
             attention_type=attention_type.strip().lower(),  # type: ignore[arg-type]
             ffn_type=ffn_type.strip().lower(),  # type: ignore[arg-type]
             num_experts=_i(num_experts),

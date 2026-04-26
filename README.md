@@ -47,7 +47,6 @@ arch = ArchitectureConfig(
     kv_heads=8,
     intermediate_size=14336,
     vocab_size=128256,
-    ffn_multiplier=3.0,
     attention_type="gqa",
     ffn_type="dense",
 )

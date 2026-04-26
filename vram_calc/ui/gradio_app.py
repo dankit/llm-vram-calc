@@ -35,7 +35,6 @@ def calculate_and_display(
     kv_heads: int,
     intermediate_size: int,
     vocab_size: int,
-    ffn_multiplier: float,
     attention_type: str,
     ffn_type: str,
     num_experts: int,
@@ -64,7 +63,6 @@ def calculate_and_display(
             kv_heads,
             intermediate_size,
             vocab_size,
-            ffn_multiplier,
             attention_type,
             ffn_type,
             num_experts,
@@ -100,7 +98,6 @@ def calculate_and_display(
 - Hidden/Layers: **{estimate.config_hidden:,} / {estimate.config_layers}**
 - Heads/KV Heads: **{estimate.config_heads} / {estimate.config_kv_heads}**
 - Experts (if MoE): **{estimate.num_experts} total, {estimate.experts_per_token} active**
-- FFN multiplier: **{estimate.ffn_multiplier:.2f}**
 - Total VRAM: **{estimate.total_gb:.2f} GB** ({estimate.utilization_pct:.1f}% of {estimate.available_gb:.1f} GB)
 - KV cache growth: **{estimate.kv_cache_per_token_kb:.2f} KB/token**
 """
@@ -149,13 +146,6 @@ def build_interface():
 
                     attention_type = gr.Radio(choices=["mha", "gqa"], value="gqa", label="Attention Type")
                     ffn_type = gr.Radio(choices=["dense", "moe"], value="dense", label="FFN Type")
-                    ffn_multiplier = gr.Number(
-                        value=3.0,
-                        minimum=0.1,
-                        precision=2,
-                        label="FFN Multiplier",
-                        info="Controls FFN expansion/activation shape (higher means more FFN runtime memory).",
-                    )
 
                     with gr.Group(visible=False) as moe_group:
                         gr.Markdown("#### MoE Settings")
@@ -208,7 +198,6 @@ def build_interface():
             kv_heads,
             intermediate_size,
             vocab_size,
-            ffn_multiplier,
             attention_type,
             ffn_type,
             num_experts,

@@ -45,7 +45,7 @@ def _breakdown_bar(name: str, value: float, total: float, color: str) -> str:
 
 def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
     """Create HTML visualization of VRAM breakdown."""
-    
+
     colors = {
         "Model Weights": "#6366f1",
         "Gradients": "#f59e0b",
@@ -58,24 +58,24 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
         "torch.compile": "#14b8a6",
         "CUDA Overhead": "#64748b",
     }
-    
+    capacity_marker_pct = 100.0
+
     status_color = "#22c55e" if estimate.fits else "#ef4444"
     status_text = "FITS IN VRAM" if estimate.fits else "EXCEEDS VRAM"
     status_bg = "rgba(34, 197, 94, 0.1)" if estimate.fits else "rgba(239, 68, 68, 0.1)"
-    
+
     # Build breakdown bars
     total_breakdown = sum(v for v in estimate.breakdown.values() if v > 0)
     breakdown_html = ""
     for name, value in estimate.breakdown.items():
         if value > 0.001:
             color = colors.get(name, "#64748b")
-            display_name = "Activations (FFN)" if name == "Activations (FFN)" else name
-            breakdown_html += _breakdown_bar(display_name, value, total_breakdown, color)
-    
+            breakdown_html += _breakdown_bar(name, value, total_breakdown, color)
+
     # Utilization bar
     util_pct = min(estimate.utilization_pct, 150)
     overflow = estimate.utilization_pct > 100
-    
+
     # Forward/Backward pass breakdown (training only)
     fwd_bwd_html = ""
     if mode == "Training" and estimate.forward_pass_gb > 0:
@@ -118,26 +118,29 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
         attn_pct = (estimate.attn_activations_gb / total_act) * 100
         ffn_pct = (estimate.ffn_activations_gb / total_act) * 100
         other_pct = (estimate.other_activations_gb / total_act) * 100
-        
+        attn_color = colors["Activations (Attn)"]
+        ffn_color = colors["Activations (FFN)"]
+        other_color = colors["Activations (Other)"]
+
         activation_breakdown_html = f"""
         <div style="padding: 14px; background: #1e293b; border-radius: 16px; margin-bottom: 14px;">
             <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600; color: #e2e8f0;">
                 Activation Memory Breakdown
             </h3>
             <div style="display: flex; height: 34px; border-radius: 8px; overflow: hidden; margin-bottom: 12px; border: 1px solid #334155;">
-                <div style="width: {attn_pct}%; background: #ec4899; border-right: 2px solid #0f172a;
+                <div style="width: {attn_pct}%; background: {attn_color}; border-right: 2px solid #0f172a;
                             display: flex; align-items: center; justify-content: center;">
                     <span style="font-size: 11px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
                         {attn_pct:.0f}%
                     </span>
                 </div>
-                <div style="width: {ffn_pct}%; background: #f97316; border-right: 2px solid #0f172a;
+                <div style="width: {ffn_pct}%; background: {ffn_color}; border-right: 2px solid #0f172a;
                             display: flex; align-items: center; justify-content: center;">
                     <span style="font-size: 11px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
                         {ffn_pct:.0f}%
                     </span>
                 </div>
-                <div style="width: {other_pct}%; background: #64748b;
+                <div style="width: {other_pct}%; background: {other_color};
                             display: flex; align-items: center; justify-content: center;">
                     <span style="font-size: 11px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
                         {other_pct:.0f}%
@@ -146,21 +149,21 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
             </div>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="display: inline-block; width: 12px; height: 12px; background: #ec4899; border-radius: 3px;"></span>
+                    <span style="display: inline-block; width: 12px; height: 12px; background: {attn_color}; border-radius: 3px;"></span>
                     <span style="font-size: 13px; color: #e2e8f0;">Attention</span>
                     <span style="font-size: 12px; color: #94a3b8; font-family: 'JetBrains Mono', monospace; margin-left: auto;">
                         {estimate.attn_activations_gb:.2f}GB
                     </span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="display: inline-block; width: 12px; height: 12px; background: #f97316; border-radius: 3px;"></span>
+                    <span style="display: inline-block; width: 12px; height: 12px; background: {ffn_color}; border-radius: 3px;"></span>
                     <span style="font-size: 13px; color: #e2e8f0;">FFN</span>
                     <span style="font-size: 12px; color: #94a3b8; font-family: 'JetBrains Mono', monospace; margin-left: auto;">
                         {estimate.ffn_activations_gb:.2f}GB
                     </span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="display: inline-block; width: 12px; height: 12px; background: #64748b; border-radius: 3px;"></span>
+                    <span style="display: inline-block; width: 12px; height: 12px; background: {other_color}; border-radius: 3px;"></span>
                     <span style="font-size: 13px; color: #e2e8f0;">Other</span>
                     <span style="font-size: 12px; color: #94a3b8; font-family: 'JetBrains Mono', monospace; margin-left: auto;">
                         {estimate.other_activations_gb:.2f}GB
@@ -205,8 +208,8 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
                             background: linear-gradient(90deg, #6366f1, #8b5cf6, #a855f7);
                             border-radius: 10px; transition: width 0.4s ease;
                             box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);"></div>
-                {"<div style='position: absolute; height: 100%; left: 66.67%; width: " + str(min(util_pct - 100, 50)) + "%; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.9;'></div>" if overflow else ""}
-                <div style="position: absolute; left: 66.67%; top: 0; bottom: 0; width: 3px; 
+                {"<div style='position: absolute; height: 100%; left: " + str(capacity_marker_pct) + "%; width: " + str(min(util_pct - 100, 50)) + "%; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.9;'></div>" if overflow else ""}
+                <div style="position: absolute; left: {capacity_marker_pct}%; top: 0; bottom: 0; width: 3px; 
                             background: #22c55e; box-shadow: 0 0 10px #22c55e;"></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 10px; 
@@ -242,7 +245,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
                 '#8b5cf6' if estimate.is_moe else '#10b981',
                 f'{estimate.experts_per_token} experts/token' if estimate.is_moe else ''
             )}
-            {_stat_card('Memory/Token', f'{estimate.memory_per_token_kb:.1f}KB', '#06b6d4', 'per seq token')}
+            {_stat_card('KV Cache/Token', f'{estimate.kv_cache_per_token_kb:.1f}KB', '#06b6d4', 'per seq token')}
             {_stat_card('Total VRAM', f'{estimate.total_gb:.1f}GB', '#f59e0b')}
             {_stat_card('Headroom', f'{max(0, estimate.available_gb - estimate.total_gb):.1f}GB', status_color, 'remaining')}
         </div>
@@ -259,43 +262,3 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
     """
     
     return html
-
-
-def create_na_visualization(error_message: str = "") -> str:
-    """Create visualization when architecture input is invalid."""
-    return f"""
-    <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
-                padding: 28px; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); 
-                border-radius: 20px; color: #f8fafc; border: 1px solid #334155;">
-        
-        <div style="text-align: center; padding: 48px 24px;">
-            <div style="font-size: 64px; margin-bottom: 24px;">&#9881;</div>
-            <div style="font-size: 28px; font-weight: 700; color: #f59e0b; margin-bottom: 16px;">
-                Could Not Compute
-            </div>
-            <div style="font-size: 16px; color: #94a3b8; max-width: 500px; margin: 0 auto; line-height: 1.6;">
-                Architecture input is incomplete or invalid.
-            </div>
-            
-            <div style="margin-top: 32px; padding: 24px; background: linear-gradient(135deg, #1e3a5f, #1e293b); border-radius: 12px; 
-                        text-align: left; max-width: 520px; margin-left: auto; margin-right: auto; border: 1px solid #3b82f6;">
-                <div style="font-size: 16px; font-weight: 600; color: #60a5fa; margin-bottom: 16px;">
-                    Please provide valid architecture values:
-                </div>
-                <div style="color: #e2e8f0; font-size: 14px; line-height: 1.8;">
-                    <p style="margin: 0 0 12px 0;">Provide at minimum:</p>
-                    <ul style="margin: 0; padding-left: 20px; color: #94a3b8;">
-                        <li><strong style="color: #e2e8f0;">Parameters (B)</strong> - Total model parameters in billions</li>
-                        <li><strong style="color: #e2e8f0;">Hidden Dim</strong> - Hidden dimension size (e.g., 4096)</li>
-                        <li><strong style="color: #e2e8f0;">Layers</strong> - Number of transformer layers</li>
-                    </ul>
-                    <p style="margin: 16px 0 0 0; font-size: 13px; color: #64748b;">
-                        Other values will use sensible defaults if not provided.
-                    </p>
-                </div>
-            </div>
-            
-            {"<div style='margin-top: 24px; color: #94a3b8; font-size: 13px;'>" + error_message + "</div>" if error_message else ""}
-        </div>
-    </div>
-    """
