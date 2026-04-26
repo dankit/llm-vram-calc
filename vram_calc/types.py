@@ -43,6 +43,7 @@ class VRAMEstimate:
     experts_per_token: int = 1
     active_params_b: float = 0.0
     kv_cache_per_token_kb: float = 0.0
+    attention_workspace_per_layer_mb: float = 0.0
     attention_type: str = "mha"
     ffn_type: str = "dense"
 
@@ -80,6 +81,7 @@ class VRAMInput:
     lora_rank: int
     lora_enabled: bool
     use_torch_compile: bool = False
+    flash_attention: bool = False
     ddp_enabled: bool = False
     mixed_precision: bool = False
     @classmethod
@@ -107,6 +109,7 @@ class VRAMInput:
         lora_enabled: bool,
         lora_rank: int,
         use_torch_compile: bool,
+        flash_attention: bool,
         ddp_enabled: bool,
         mixed_precision: bool,
     ) -> VRAMInput:
@@ -141,7 +144,7 @@ class VRAMInput:
         return cls(
             architecture=architecture,
             gpu_name=gpu_name,
-            mode=mode,
+            mode=mode.strip().capitalize(),
             dtype=normalized_dtype,
             batch_size=int(batch_size),
             seq_length=int(seq_length),
@@ -150,6 +153,7 @@ class VRAMInput:
             lora_rank=int(lora_rank),
             lora_enabled=lora_enabled,
             use_torch_compile=use_torch_compile,
+            flash_attention=flash_attention,
             ddp_enabled=ddp_enabled,
             mixed_precision=mixed_precision,
         )

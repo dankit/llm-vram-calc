@@ -83,13 +83,15 @@ def finalize_architecture(arch: ArchitectureConfig) -> ArchitectureConfig:
         if experts_per_token > num_experts:
             raise ValueError("Experts per token must be <= number of experts.")
 
-    active_params_b = arch.active_params_b
-    if active_params_b <= 0:
-        if ffn_type == "moe":
+    if ffn_type == "dense":
+        # Dense models always activate the full parameter set.
+        active_params_b = arch.params_b
+    else:
+        active_params_b = arch.active_params_b
+        if active_params_b <= 0:
             expert_ratio = experts_per_token / num_experts
             active_params_b = arch.params_b * (0.33 + 0.67 * expert_ratio)
-        else:
-            active_params_b = arch.params_b
+        active_params_b = min(active_params_b, arch.params_b)
 
     return replace(
         arch,

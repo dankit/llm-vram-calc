@@ -45,12 +45,16 @@ def _breakdown_bar(name: str, value: float, total: float, color: str) -> str:
 
 def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
     """Create HTML visualization of VRAM breakdown."""
+    is_inference = mode == "Inference"
 
+    attn_key = "Activations (Attn)"
+    legacy_attn_key = "Activations (Attn, drives KV cache)"
     colors = {
         "Model Weights": "#6366f1",
         "Gradients": "#f59e0b",
         "Optimizer States": "#10b981",
-        "Activations (Attn)": "#ec4899",
+        attn_key: "#ec4899",
+        legacy_attn_key: "#ec4899",
         "Activations (FFN)": "#f472b6",
         "Activations (Other)": "#fb7185",
         "KV Cache": "#8b5cf6",
@@ -58,7 +62,6 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
         "torch.compile": "#14b8a6",
         "CUDA Overhead": "#64748b",
     }
-    capacity_marker_pct = 100.0
 
     status_color = "#22c55e" if estimate.fits else "#ef4444"
     status_text = "FITS IN VRAM" if estimate.fits else "EXCEEDS VRAM"
@@ -118,7 +121,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
         attn_pct = (estimate.attn_activations_gb / total_act) * 100
         ffn_pct = (estimate.ffn_activations_gb / total_act) * 100
         other_pct = (estimate.other_activations_gb / total_act) * 100
-        attn_color = colors["Activations (Attn)"]
+        attn_color = colors[attn_key]
         ffn_color = colors["Activations (FFN)"]
         other_color = colors["Activations (Other)"]
 
@@ -208,8 +211,8 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
                             background: linear-gradient(90deg, #6366f1, #8b5cf6, #a855f7);
                             border-radius: 10px; transition: width 0.4s ease;
                             box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);"></div>
-                {"<div style='position: absolute; height: 100%; left: " + str(capacity_marker_pct) + "%; width: " + str(min(util_pct - 100, 50)) + "%; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.9;'></div>" if overflow else ""}
-                <div style="position: absolute; left: {capacity_marker_pct}%; top: 0; bottom: 0; width: 3px; 
+                {"<div style='position: absolute; height: 100%; left: 100%; width: " + str(min(util_pct - 100, 50)) + "%; background: linear-gradient(90deg, #ef4444, #dc2626); opacity: 0.9;'></div>" if overflow else ""}
+                <div style="position: absolute; left: 100%; top: 0; bottom: 0; width: 3px; 
                             background: #22c55e; box-shadow: 0 0 10px #22c55e;"></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 10px; 
@@ -232,7 +235,7 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
         </div>
         
         <!-- Stats Grid -->
-        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;">
+        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;">
             {_stat_card(
                 'Total Params' if estimate.is_moe else 'Model Params',
                 f'{estimate.model_params_b:.1f}B',
@@ -241,11 +244,29 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
             )}
             {_stat_card(
                 'Active Params' if estimate.is_moe else 'Trainable',
-                f'{estimate.active_params_b:.1f}B' if estimate.is_moe else f'{estimate.trainable_params_b:.2f}B',
+                (
+                    f'{estimate.active_params_b:.1f}B'
+                    if estimate.is_moe
+                    else (f'{estimate.trainable_params_b:.2f}B' if mode == 'Training' else f'{estimate.model_params_b:.2f}B')
+                ),
                 '#8b5cf6' if estimate.is_moe else '#10b981',
-                f'{estimate.experts_per_token} experts/token' if estimate.is_moe else ''
+                (
+                    f'{estimate.experts_per_token} experts/token'
+                    if estimate.is_moe
+                    else ('LoRA-adjusted trainable set' if mode == 'Training' else 'resident parameters')
+                )
             )}
-            {_stat_card('KV Cache/Token', f'{estimate.kv_cache_per_token_kb:.1f}KB', '#06b6d4', 'per seq token')}
+            {_stat_card(
+                'KV Cache/Token' if is_inference else 'Runtime Mode',
+                (
+                    f'{estimate.kv_cache_per_token_kb:.1f}KB'
+                    if is_inference
+                    else mode
+                ),
+                '#06b6d4',
+                'per-token inference memory growth' if is_inference else 'training memory profile'
+            )}
+            {_stat_card('Attn Workspace', f'{estimate.attention_workspace_per_layer_mb:.1f}MB', '#ec4899', 'temporary per layer')}
             {_stat_card('Total VRAM', f'{estimate.total_gb:.1f}GB', '#f59e0b')}
             {_stat_card('Headroom', f'{max(0, estimate.available_gb - estimate.total_gb):.1f}GB', status_color, 'remaining')}
         </div>
@@ -256,6 +277,9 @@ def create_vram_visualization(estimate: VRAMEstimate, mode: str) -> str:
             <span style="color: #64748b; font-size: 13px;">
                 Mode: <span style="color: {'#22c55e' if mode == 'Inference' else '#f59e0b'}; font-weight: 600;">
                     {mode}</span>
+            </span>
+            <span style="color: #64748b; font-size: 13px; margin-left: 12px;">
+                {'Runtime tensor model: FP32 when dtype is FP32, otherwise 16-bit.' if is_inference else 'Activation model: FP32 when dtype is FP32, otherwise 16-bit.'}
             </span>
         </div>
     </div>

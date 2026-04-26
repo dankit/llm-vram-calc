@@ -25,6 +25,7 @@ _APP_CSS = """
 """
 
 _APP_THEME = gr.themes.Base(primary_hue="indigo", secondary_hue="purple", neutral_hue="slate")
+_DEFAULT_VOCAB_SIZE = 128256
 
 
 def calculate_and_display(
@@ -34,7 +35,6 @@ def calculate_and_display(
     heads: int,
     kv_heads: int,
     intermediate_size: int,
-    vocab_size: int,
     attention_type: str,
     ffn_type: str,
     num_experts: int,
@@ -50,6 +50,7 @@ def calculate_and_display(
     lora_enabled: bool,
     lora_rank: int,
     use_torch_compile: bool,
+    flash_attention: bool,
     ddp_enabled: bool,
     mixed_precision: bool,
 ):
@@ -62,7 +63,7 @@ def calculate_and_display(
             heads,
             kv_heads,
             intermediate_size,
-            vocab_size,
+            _DEFAULT_VOCAB_SIZE,
             attention_type,
             ffn_type,
             num_experts,
@@ -78,6 +79,7 @@ def calculate_and_display(
             lora_enabled,
             lora_rank,
             use_torch_compile,
+            flash_attention,
             ddp_enabled,
             mixed_precision,
         )
@@ -89,6 +91,33 @@ def calculate_and_display(
         )
 
     visualization = create_vram_visualization(estimate, mode)
+    moe_line = (
+        f"- Experts: **{estimate.num_experts} total, {estimate.experts_per_token} active/token**\n"
+        if estimate.is_moe
+        else ""
+    )
+    is_inference = mode.strip().lower() == "inference"
+    precision_note = (
+        "FP32 uses 4-byte runtime tensors; quantized weight dtypes keep runtime tensors at 16-bit."
+        if is_inference
+        else "FP32 uses 4-byte activations; quantized weight dtypes keep activations at 16-bit."
+    )
+    kv_cache_line = (
+        f"- KV cache growth (decoder state): **{estimate.kv_cache_per_token_kb:.2f} KB/token**\n"
+        if is_inference
+        else ""
+    )
+    attention_workspace_desc = (
+        "temporary attention workspace during inference passes"
+        if is_inference
+        else "temporary attention workspace during training passes"
+    )
+    runtime_opts = []
+    if flash_attention:
+        runtime_opts.append("Flash Attention")
+    if use_torch_compile:
+        runtime_opts.append("torch.compile")
+    runtime_opts_line = f"- Runtime optimizations: **{', '.join(runtime_opts)}**\n" if runtime_opts else ""
     details_md = f"""
 ### {'Model FITS' if estimate.fits else 'Model EXCEEDS available VRAM'}
 `{mode}` mode with `{estimate.attention_type.upper()}` attention and `{estimate.ffn_type.upper()}` FFN
@@ -97,9 +126,9 @@ def calculate_and_display(
 - Active params: **{estimate.active_params_b:.2f}B**
 - Hidden/Layers: **{estimate.config_hidden:,} / {estimate.config_layers}**
 - Heads/KV Heads: **{estimate.config_heads} / {estimate.config_kv_heads}**
-- Experts (if MoE): **{estimate.num_experts} total, {estimate.experts_per_token} active**
-- Total VRAM: **{estimate.total_gb:.2f} GB** ({estimate.utilization_pct:.1f}% of {estimate.available_gb:.1f} GB)
-- KV cache growth: **{estimate.kv_cache_per_token_kb:.2f} KB/token**
+{moe_line}- Precision assumption: **{precision_note}**
+{runtime_opts_line}- Total VRAM: **{estimate.total_gb:.2f} GB** ({estimate.utilization_pct:.1f}% of {estimate.available_gb:.1f} GB)
+{kv_cache_line}- Attention workspace ({attention_workspace_desc}): **{estimate.attention_workspace_per_layer_mb:.2f} MB/layer**
 """
     return visualization, details_md
 
@@ -135,14 +164,25 @@ def build_interface():
                     gr.Markdown("### Transformer Architecture")
                     params_b = gr.Number(value=8.0, label="Total Parameters (B)", minimum=0.01, precision=3)
                     with gr.Row():
-                        hidden = gr.Number(value=4096, label="Hidden Size", minimum=1, precision=0)
+                        hidden = gr.Number(
+                            value=4096,
+                            label="Hidden Size",
+                            info="Embedding/activation width of each token vector.",
+                            minimum=1,
+                            precision=0,
+                        )
                         layers = gr.Number(value=32, label="Layers", minimum=1, precision=0)
                     with gr.Row():
                         heads = gr.Number(value=32, label="Attention Heads", minimum=1, precision=0)
                         kv_heads = gr.Number(value=8, label="KV Heads (GQA only)", minimum=1, precision=0, visible=True)
                     with gr.Row():
-                        intermediate_size = gr.Number(value=14336, label="FFN Intermediate Size", minimum=1, precision=0)
-                        vocab_size = gr.Number(value=128256, label="Vocab Size", minimum=1, precision=0)
+                        intermediate_size = gr.Number(
+                            value=14336,
+                            label="FFN Intermediate Size",
+                            info="Expansion width in the MLP block (often ~3-4x hidden size).",
+                            minimum=1,
+                            precision=0,
+                        )
 
                     attention_type = gr.Radio(choices=["mha", "gqa"], value="gqa", label="Attention Type")
                     ffn_type = gr.Radio(choices=["dense", "moe"], value="dense", label="FFN Type")
@@ -155,7 +195,7 @@ def build_interface():
                         active_params_b = gr.Number(
                             value=0,
                             label="Active Parameters (B, optional)",
-                            info="0 means auto-derive from total params + routing fraction.",
+                            info="Only used for MoE. 0 auto-derives active params from experts/token routing.",
                             minimum=0,
                             precision=3,
                         )
@@ -175,12 +215,13 @@ def build_interface():
                         label="Optimizer",
                     )
                     mixed_precision = gr.Checkbox(value=False, label="Mixed Precision (FP32 master weights)")
-                    lora_enabled = gr.Checkbox(value=True, label="LoRA Enabled")
+                    lora_enabled = gr.Checkbox(value=False, label="LoRA Enabled")
                     lora_rank = gr.Slider(minimum=4, maximum=256, value=16, step=4, label="LoRA Rank")
                     ddp_enabled = gr.Checkbox(value=False, label="DDP overhead")
 
                 with gr.Accordion("Advanced Runtime Options", open=False):
                     use_torch_compile = gr.Checkbox(value=False, label="torch.compile overhead")
+                    flash_attention = gr.Checkbox(value=False, label="Flash Attention")
 
                 calculate_btn = gr.Button("Calculate VRAM", variant="primary", size="lg")
 
@@ -197,7 +238,6 @@ def build_interface():
             heads,
             kv_heads,
             intermediate_size,
-            vocab_size,
             attention_type,
             ffn_type,
             num_experts,
@@ -213,6 +253,7 @@ def build_interface():
             lora_enabled,
             lora_rank,
             use_torch_compile,
+            flash_attention,
             ddp_enabled,
             mixed_precision,
         ]
@@ -220,7 +261,32 @@ def build_interface():
 
         calculate_btn.click(fn=calculate_and_display, inputs=all_inputs, outputs=all_outputs)
 
-        for component in [gpu_dropdown, mode, dtype, batch_size, seq_length, attention_type, ffn_type]:
+        for component in [
+            gpu_dropdown,
+            mode,
+            dtype,
+            batch_size,
+            seq_length,
+            attention_type,
+            ffn_type,
+            gradient_checkpointing,
+            optimizer,
+            mixed_precision,
+            lora_enabled,
+            lora_rank,
+            ddp_enabled,
+            use_torch_compile,
+            flash_attention,
+            params_b,
+            hidden,
+            layers,
+            heads,
+            kv_heads,
+            intermediate_size,
+            num_experts,
+            experts_per_token,
+            active_params_b,
+        ]:
             component.change(fn=calculate_and_display, inputs=all_inputs, outputs=all_outputs)
 
         ffn_type.change(fn=lambda v: gr.update(visible=v == "moe"), inputs=ffn_type, outputs=moe_group)
@@ -233,9 +299,10 @@ def build_interface():
                 gr.update(visible=m == "Training"),
                 gr.update(visible=m == "Training"),
                 gr.update(visible=m == "Training"),
+                gr.update(visible=m == "Training"),
             ),
             inputs=mode,
-            outputs=[gradient_checkpointing, optimizer, mixed_precision, lora_enabled, ddp_enabled],
+            outputs=[gradient_checkpointing, optimizer, mixed_precision, lora_enabled, ddp_enabled, lora_rank],
         )
 
         custom_gpu_save_btn.click(

@@ -11,10 +11,19 @@ from vram_calc.types import ArchitectureConfig, VRAMEstimate, VRAMInput
 
 BYTES_PER_KIB = 1024
 BYTES_PER_GIB = 1024**3
+FLASH_ATTN_BLOCK_SIZE = 128
 
 
 def _weights_gb(params_b: float, bytes_per_param: float) -> float:
     return (params_b * 1e9 * bytes_per_param) / BYTES_PER_GIB
+
+
+def _is_training(mode: str) -> bool:
+    return mode.strip().lower() == "training"
+
+
+def _is_inference(mode: str) -> bool:
+    return mode.strip().lower() == "inference"
 
 
 def _trainable_params_b(
@@ -25,7 +34,7 @@ def _trainable_params_b(
     hidden: int,
     layers: int,
 ) -> float:
-    if lora_enabled and mode == "Training":
+    if lora_enabled and _is_training(mode):
         num_target_modules = 7
         lora_params = lora_rank * hidden * 2 * num_target_modules * layers
         return lora_params / 1e9
@@ -45,28 +54,26 @@ def _optimizer_states_gb(trainable_params_b: float, optimizer: str) -> float:
 
 
 def calc_weights_and_states(
-    arch: ArchitectureConfig, inp: VRAMInput, bytes_per_param: float
+    arch: ArchitectureConfig, inp: VRAMInput, bytes_per_param: float, bytes_activation: int
 ) -> tuple[float, float, float, float, float]:
     """Calculate model weights, grads, optimizer states, trainable params, and DDP overhead."""
     resident_params_b = arch.params_b
-    if arch.ffn_type == "moe" and inp.mode == "Inference":
-        # Optional sparse-expert residency behavior for inference scenarios.
-        resident_params_b = min(arch.params_b, max(arch.active_params_b, arch.params_b * 0.35))
     model_weights_gb = _weights_gb(resident_params_b, bytes_per_param)
     trainable_params_b = _trainable_params_b(
         arch.params_b, inp.lora_enabled, inp.mode, inp.lora_rank, arch.hidden, arch.layers
     )
-    is_mixed_precision = inp.mixed_precision and inp.mode == "Training"
+    is_mixed_precision = inp.mixed_precision and _is_training(inp.mode)
 
     gradients_gb = 0.0
     optimizer_states_gb = 0.0
     ddp_overhead_gb = 0.0
-    if inp.mode == "Training":
+    if _is_training(inp.mode):
         if is_mixed_precision:
             gradients_gb = (trainable_params_b * 1e9 * 2) / BYTES_PER_GIB
             master_weights_gb = (trainable_params_b * 1e9 * 4) / BYTES_PER_GIB
         else:
-            gradients_gb = (trainable_params_b * 1e9 * bytes_per_param) / BYTES_PER_GIB
+            # Training gradients follow compute precision, not quantized weight storage precision.
+            gradients_gb = (trainable_params_b * 1e9 * bytes_activation) / BYTES_PER_GIB
             master_weights_gb = 0.0
         optimizer_states_gb = _optimizer_states_gb(trainable_params_b, inp.optimizer) + master_weights_gb
         if inp.ddp_enabled:
@@ -85,13 +92,22 @@ def calc_attention_memory(arch: ArchitectureConfig, inp: VRAMInput, bytes_activa
 
     q_proj = batch_size * seq_length * hidden * bytes_activation
     kv_proj = 2 * batch_size * seq_length * hidden * (kv_heads / heads) * bytes_activation
-    attn_scores = batch_size * kv_heads * seq_length * seq_length * bytes_activation
+    # Attention score tensors scale with query heads, not KV heads.
+    # Vanilla attention materializes an SxS score matrix.
+    attn_scores = batch_size * heads * seq_length * seq_length * bytes_activation
+    if inp.flash_attention:
+        # Flash Attention uses block-wise streaming and avoids full score-matrix residency.
+        # Approximate peak score workspace as S x block_size instead of S x S.
+        tiled_scores = batch_size * heads * seq_length * min(seq_length, FLASH_ATTN_BLOCK_SIZE) * bytes_activation
+        # Keep a small extra buffer for numerically stable running softmax stats.
+        running_stats = batch_size * heads * seq_length * 2 * bytes_activation
+        attn_scores = tiled_scores + running_stats
     attn_output = batch_size * seq_length * hidden * bytes_activation
 
     per_layer = q_proj + kv_proj + attn_scores + attn_output
-    if inp.mode == "Inference":
-        per_layer = batch_size * seq_length * hidden * bytes_activation
-        return (per_layer * arch.layers) / BYTES_PER_GIB, per_layer
+    if _is_inference(inp.mode):
+        # Inference peak is modeled as a single-layer working set, not layers-summed residency.
+        return per_layer / BYTES_PER_GIB, per_layer
 
     effective_layers = max(1, int(math.sqrt(arch.layers))) if inp.gradient_checkpointing else arch.layers
     return (effective_layers * per_layer) / BYTES_PER_GIB, per_layer
@@ -105,7 +121,9 @@ def calc_ffn_memory(arch: ArchitectureConfig, inp: VRAMInput, bytes_activation: 
     intermediate = arch.intermediate_size
 
     if arch.ffn_type == "moe":
-        effective_intermediate = intermediate * arch.experts_per_token
+        active_ratio = arch.active_params_b / arch.params_b if arch.params_b > 0 else 1.0
+        active_ratio = max(0.0, min(1.0, active_ratio))
+        effective_intermediate = intermediate * active_ratio
     else:
         effective_intermediate = intermediate
 
@@ -113,11 +131,12 @@ def calc_ffn_memory(arch: ArchitectureConfig, inp: VRAMInput, bytes_activation: 
     per_layer = ffn_input + (batch_size * seq_length * effective_intermediate * bytes_activation)
 
     if arch.ffn_type == "moe":
-        per_layer += batch_size * seq_length * arch.num_experts * bytes_activation
+        # Router keeps top-k expert scores/indices per token, not full expert logits residency.
+        per_layer += batch_size * seq_length * arch.experts_per_token * bytes_activation
 
-    if inp.mode == "Inference":
-        per_layer = batch_size * seq_length * effective_intermediate * bytes_activation
-        return (per_layer * arch.layers) / BYTES_PER_GIB, per_layer
+    if _is_inference(inp.mode):
+        # Inference peak is modeled as a single-layer working set.
+        return per_layer / BYTES_PER_GIB, per_layer
 
     effective_layers = max(1, int(math.sqrt(arch.layers))) if inp.gradient_checkpointing else arch.layers
     return (effective_layers * per_layer) / BYTES_PER_GIB, per_layer
@@ -138,11 +157,12 @@ def compute_vram_estimate(arch: ArchitectureConfig, inp: VRAMInput) -> VRAMEstim
     total_vram_gb = gpu_specs[inp.gpu_name]["vram_gb"]
 
     bytes_per_param = DTYPE_BYTES[inp.dtype]
-    # Activation memory is modeled at fp16/bf16 precision across runtime dtypes.
-    bytes_activation = 2
+    # Runtime activations/KV cache are modeled at compute precision:
+    # FP32 runs at 4 bytes; quantized weight formats still keep activations/cache at 2 bytes.
+    bytes_activation = 4 if bytes_per_param >= 4 else 2
 
     model_weights_gb, gradients_gb, optimizer_states_gb, trainable_params_b, ddp_overhead_gb = calc_weights_and_states(
-        arch, inp, bytes_per_param
+        arch, inp, bytes_per_param, bytes_activation
     )
     attn_activations_gb, per_layer_attn = calc_attention_memory(arch, inp, bytes_activation)
     ffn_activations_gb, per_layer_ffn = calc_ffn_memory(arch, inp, bytes_activation)
@@ -150,28 +170,27 @@ def compute_vram_estimate(arch: ArchitectureConfig, inp: VRAMInput) -> VRAMEstim
     layernorm_act = 2 * inp.batch_size * inp.seq_length * arch.hidden * bytes_activation
     residual_act = 2 * inp.batch_size * inp.seq_length * arch.hidden * bytes_activation
     per_layer_other = layernorm_act + residual_act
-    if inp.mode == "Training":
+    if _is_training(inp.mode):
         effective_layers = max(1, int(math.sqrt(arch.layers))) if inp.gradient_checkpointing else arch.layers
         other_activations_gb = (effective_layers * per_layer_other) / BYTES_PER_GIB
         other_activations_gb += (inp.batch_size * inp.seq_length * arch.hidden * bytes_activation) / BYTES_PER_GIB
     else:
-        other_activations_gb = (
-            inp.batch_size * inp.seq_length * arch.hidden * bytes_activation * arch.layers
-        ) / BYTES_PER_GIB
+        other_activations_gb = per_layer_other / BYTES_PER_GIB
 
     activations_gb = attn_activations_gb + ffn_activations_gb + other_activations_gb
     forward_pass_gb = activations_gb
     backward_pass_gb = (
         gradients_gb + ((per_layer_attn + per_layer_ffn + per_layer_other) / BYTES_PER_GIB)
-        if inp.mode == "Training"
+        if _is_training(inp.mode)
         else 0.0
     )
 
     head_dim = arch.hidden // arch.heads if arch.heads > 0 else 128
-    kv_cache_per_token_bytes = 2 * inp.batch_size * arch.layers * arch.kv_heads * head_dim * bytes_per_param
+    kv_cache_per_token_bytes = 2 * inp.batch_size * arch.layers * arch.kv_heads * head_dim * bytes_activation
     kv_cache_per_token_kb = kv_cache_per_token_bytes / BYTES_PER_KIB
+    attention_workspace_per_layer_mb = per_layer_attn / (1024**2)
     kv_cache_gb = (
-        (kv_cache_per_token_bytes * inp.seq_length) / BYTES_PER_GIB if inp.mode == "Inference" else 0.0
+        (kv_cache_per_token_bytes * inp.seq_length) / BYTES_PER_GIB if _is_inference(inp.mode) else 0.0
     )
 
     compile_overhead_gb, cuda_overhead_gb = calc_runtime_overheads(model_weights_gb, inp.use_torch_compile)
@@ -190,11 +209,12 @@ def compute_vram_estimate(arch: ArchitectureConfig, inp: VRAMInput) -> VRAMEstim
     utilization_pct = (total_gb / total_vram_gb) * 100
 
     is_moe = arch.ffn_type == "moe"
+    attn_breakdown_key = "Activations (Attn)"
     breakdown = {
         "Model Weights": model_weights_gb,
         "Gradients": gradients_gb,
         "Optimizer States": optimizer_states_gb,
-        "Activations (Attn)": attn_activations_gb,
+        attn_breakdown_key: attn_activations_gb,
         "Activations (FFN)": ffn_activations_gb,
         "Activations (Other)": other_activations_gb,
         "KV Cache": kv_cache_gb,
@@ -234,6 +254,7 @@ def compute_vram_estimate(arch: ArchitectureConfig, inp: VRAMInput) -> VRAMEstim
         experts_per_token=arch.experts_per_token,
         active_params_b=arch.active_params_b,
         kv_cache_per_token_kb=kv_cache_per_token_kb,
+        attention_workspace_per_layer_mb=attention_workspace_per_layer_mb,
         attention_type=arch.attention_type,
         ffn_type=arch.ffn_type,
     )
